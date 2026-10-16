@@ -76,6 +76,10 @@ export const processPayment = async (req: AuthenticatedRequest, res: Response): 
     const count = await Payment.countDocuments();
     const receiptNumber = `REC-${1000 + count}`;
 
+    const cashierName = req.user?.role === 'cashier'
+      ? req.user.name
+      : req.body.cashierName || (req.user?.name ? `${req.user.name} (Online)` : 'Customer (Online)');
+
     const payment = await Payment.create({
       orderId: order._id.toString(),
       orderNumber: order.orderNumber,
@@ -83,7 +87,7 @@ export const processPayment = async (req: AuthenticatedRequest, res: Response): 
       paymentMethod,
       paymentStatus: 'paid',
       cashierId: req.user?.userId,
-      cashierName: req.user?.name || 'Cashier',
+      cashierName,
       receiptNumber,
       stripePaymentIntentId,
       splitPayments: splitPayments || [],
@@ -94,7 +98,7 @@ export const processPayment = async (req: AuthenticatedRequest, res: Response): 
     order.paymentStatus = 'paid';
     order.paymentMethod = paymentMethod;
     order.cashierId = req.user?.userId;
-    order.cashierName = req.user?.name || 'Cashier';
+    order.cashierName = cashierName;
     order.paidAt = new Date();
 
     // Move status to confirmed if it was new
@@ -110,9 +114,14 @@ export const processPayment = async (req: AuthenticatedRequest, res: Response): 
 
     await order.save();
 
-    // Critical requirement: After cashier makes payment, send notification to kitchen!
+    // Send notifications to kitchen and cashier
     emitKitchenNewOrder(order);
     emitOrderUpdate(order);
+
+    const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
+    if (io) {
+      io.emit('payment:created', payment);
+    }
 
     await Notification.create({
       title: 'New Order to Prepare',
