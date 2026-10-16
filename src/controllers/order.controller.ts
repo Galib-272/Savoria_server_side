@@ -15,6 +15,7 @@ import {
 } from '../sockets/socketHandler.js';
 import { AuditLog } from '../models/AuditLog.model.js';
 import { Notification } from '../models/Notification.model.js';
+import { Payment } from '../models/Payment.model.js';
 
 const getFormattedTime = () => {
   return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -92,6 +93,9 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
     const deliveryFee = orderType === 'delivery' ? 50 : 0;
     const total = Math.max(0, subtotal - discount + tax + deliveryFee);
 
+    const paymentMethod = req.body.paymentMethod || 'cash';
+    const isCashOrPaid = req.body.paymentStatus === 'paid' || paymentMethod === 'cash';
+    const finalPaymentStatus = isCashOrPaid ? 'paid' : 'pending';
     const currentTime = getFormattedTime();
 
     const order = await Order.create({
@@ -109,12 +113,36 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
       tax,
       deliveryFee,
       total,
-      paymentStatus: 'pending',
+      paymentMethod,
+      paymentStatus: finalPaymentStatus,
+      paidAt: isCashOrPaid ? new Date() : undefined,
       status: 'new',
       notes,
       address,
-      timeline: [{ time: currentTime, status: 'new', label: 'Order Created' }],
+      timeline: [{ time: currentTime, status: 'new', label: isCashOrPaid ? `Order Placed & Paid (৳${total}) via ${paymentMethod}` : 'Order Created' }],
     });
+
+    // If order was paid (Cash or Online Card/Transfer), record the transaction in Payment model
+    if (isCashOrPaid) {
+      const payCount = await Payment.countDocuments();
+      const receiptNumber = `REC-${1000 + payCount}`;
+      const payment = await Payment.create({
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        amount: order.total,
+        paymentMethod,
+        paymentStatus: 'paid',
+        cashierName: req.user?.name ? `${req.user.name} (Online)` : 'Customer (Online Checkout)',
+        receiptNumber,
+        stripePaymentIntentId: req.body.stripePaymentIntentId,
+        notes: req.body.notes,
+      });
+
+      const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
+      if (io) {
+        io.emit('payment:created', payment);
+      }
+    }
 
     // If dine-in, mark table and seats occupied
     if (orderType === 'dine-in' && tableNumber) {
@@ -141,7 +169,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
 
     await Notification.create({
       title: 'New Order Received',
-      message: `Order ${order.orderNumber} placed by ${order.customerName} (৳${order.total})`,
+      message: `Order ${order.orderNumber} placed by ${order.customerName} (৳${order.total}) - Payment: ${finalPaymentStatus.toUpperCase()}`,
       type: 'order',
       orderId: order._id.toString(),
       recipientRole: 'cashier',
@@ -256,11 +284,36 @@ const emitSocketAndCreateNotification = async ({
         read: false,
         time: 'Just now',
       };
-      const uniqueRoles = Array.from(new Set([...roles, 'admin', 'manager']));
+      const uniqueRoles = Array.from(new Set([...roles, 'admin', 'manager', 'customer']));
       uniqueRoles.forEach((r) => {
         io.to(`role:${r}`).emit('notification', payload);
       });
+
+      // Send to specific order room for real-time customer tracking
+      if (orderId) {
+        io.to(`order:${orderId}`).emit('notification', payload);
+        io.to(`order:${orderId}`).emit('order:customer_update', {
+          orderId,
+          title,
+          message,
+          type,
+          time: 'Just now',
+        });
+      }
     }
+
+    // Also persist customer notification in database for customer panel
+    if (orderId) {
+      await Notification.create({
+        title,
+        message,
+        type,
+        orderId,
+        tableNumber,
+        recipientRole: 'customer',
+      });
+    }
+
     return notif;
   } catch (err) {
     console.error('Failed to create/emit notification:', err);
