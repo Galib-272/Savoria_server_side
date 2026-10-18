@@ -33,7 +33,7 @@ router.put('/:id/delivery-pickup', authenticate, requireRole(['admin', 'manager'
 router.put('/:id/delivery-out', authenticate, requireRole(['admin', 'manager', 'delivery']), deliveryMarkOutForDelivery);
 router.put('/:id/delivery-delivered', authenticate, requireRole(['admin', 'manager', 'delivery']), deliveryMarkDelivered);
 
-// General status update
-router.put('/:id/status', authenticate, requireRole(['admin', 'manager', 'cashier', 'waiter']), updateOrderStatus);
+// General status update and customer pickup
+router.put('/:id/status', authenticate, requireRole(['admin', 'manager', 'cashier', 'waiter', 'customer']), updateOrderStatus);
 
 export default router;

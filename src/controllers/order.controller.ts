@@ -289,10 +289,20 @@ const emitSocketAndCreateNotification = async ({
         io.to(`role:${r}`).emit('notification', payload);
       });
 
-      // Send to specific order room for real-time customer tracking
+      // Broadcast globally so all active customer panels, order trackers & notification bells update instantly
+      io.emit('notification', payload);
+
+      // Send to specific order room and global customer listeners
       if (orderId) {
         io.to(`order:${orderId}`).emit('notification', payload);
         io.to(`order:${orderId}`).emit('order:customer_update', {
+          orderId,
+          title,
+          message,
+          type,
+          time: 'Just now',
+        });
+        io.emit('order:customer_update', {
           orderId,
           title,
           message,
