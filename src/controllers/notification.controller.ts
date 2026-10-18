@@ -38,6 +38,12 @@ export const markAsRead = async (req: AuthenticatedRequest, res: Response): Prom
   try {
     const { id } = req.params;
     await Notification.findByIdAndUpdate(id, { read: true });
+
+    const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
+    if (io) {
+      io.emit('notification:read_one', { id });
+    }
+
     res.status(200).json({ success: true, message: 'Notification marked as read' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -47,7 +53,28 @@ export const markAsRead = async (req: AuthenticatedRequest, res: Response): Prom
 export const markAllAsRead = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     await Notification.updateMany({ read: false }, { read: true });
+
+    const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
+    if (io) {
+      io.emit('notification:read_all');
+    }
+
     res.status(200).json({ success: true, message: 'All notifications marked as read' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const clearAllNotifications = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    await Notification.deleteMany({});
+
+    const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
+    if (io) {
+      io.emit('notification:cleared_all');
+    }
+
+    res.status(200).json({ success: true, message: 'All notifications cleared' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -383,16 +383,15 @@ export const markOrderReady = async (req: AuthenticatedRequest, res: Response): 
       return;
     }
 
-    // Set or confirm the order type based on cook's selection
-    if (targetPanel) {
-      order.orderType = targetPanel;
-    }
+    // Preserve customer's chosen order type
+    const finalType = order.orderType || targetPanel || 'dine-in';
+    order.orderType = finalType;
     order.status = 'ready';
 
     let timelineLabel = 'Order Marked as Ready by Kitchen';
-    if (targetPanel === 'dine-in') timelineLabel = 'Order Marked Ready for Dine-In Table Serving';
-    else if (targetPanel === 'takeaway') timelineLabel = 'Order Marked Ready for Takeaway Handover';
-    else if (targetPanel === 'delivery') timelineLabel = 'Order Marked Ready for Delivery Pickup';
+    if (finalType === 'dine-in') timelineLabel = 'Order Marked Ready for Dine-In Table Serving';
+    else if (finalType === 'takeaway') timelineLabel = 'Order Marked Ready for Takeaway Handover';
+    else if (finalType === 'delivery') timelineLabel = 'Order Marked Ready for Delivery Pickup';
 
     order.timeline.push({
       time: getFormattedTime(),
@@ -403,8 +402,8 @@ export const markOrderReady = async (req: AuthenticatedRequest, res: Response): 
     await order.save();
     emitOrderUpdate(order);
 
-    // Route notifications based on the 3 options
-    if (targetPanel === 'takeaway' || (!targetPanel && order.orderType === 'takeaway')) {
+    // Route notifications based on the customer's chosen order type
+    if (finalType === 'takeaway') {
       await emitSocketAndCreateNotification({
         title: 'Takeaway Order Ready',
         message: `Takeaway Order ${order.orderNumber} is packed and ready for customer handover!`,
@@ -412,7 +411,7 @@ export const markOrderReady = async (req: AuthenticatedRequest, res: Response): 
         orderId: order._id.toString(),
         roles: ['waiter', 'cashier', 'admin', 'manager', 'kitchen'],
       });
-    } else if (targetPanel === 'delivery' || (!targetPanel && order.orderType === 'delivery')) {
+    } else if (finalType === 'delivery') {
       emitOrderReadyForDelivery(order);
       await emitSocketAndCreateNotification({
         title: 'Order Ready for Delivery',
@@ -454,6 +453,15 @@ export const waiterClaimFood = async (req: AuthenticatedRequest, res: Response):
     const order = await Order.findById(id);
     if (!order) {
       res.status(404).json({ success: false, message: 'Order not found' });
+      return;
+    }
+
+    // Waiters can only claim Dine-In orders
+    if (order.orderType === 'takeaway' || order.orderType === 'delivery') {
+      res.status(400).json({
+        success: false,
+        message: 'Waiters can only take Dine-In orders. Takeaway and Delivery cannot be claimed by waiters.',
+      });
       return;
     }
 
