@@ -16,6 +16,7 @@ import {
 import { AuditLog } from '../models/AuditLog.model.js';
 import { Notification } from '../models/Notification.model.js';
 import { Payment } from '../models/Payment.model.js';
+import { generateUniqueReceiptNumber } from './payment.controller.js';
 
 const getFormattedTime = () => {
   return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -124,8 +125,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
 
     // If order was paid (Cash or Online Card/Transfer), record the transaction in Payment model
     if (isCashOrPaid) {
-      const payCount = await Payment.countDocuments();
-      const receiptNumber = `REC-${1000 + payCount}`;
+      const receiptNumber = await generateUniqueReceiptNumber();
       const payment = await Payment.create({
         orderId: order._id.toString(),
         orderNumber: order.orderNumber,

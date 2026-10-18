@@ -55,6 +55,30 @@ export const createStripePaymentIntent = async (req: AuthenticatedRequest, res: 
   }
 };
 
+export const generateUniqueReceiptNumber = async (): Promise<string> => {
+  const lastPayment = await Payment.findOne({ receiptNumber: /^REC-\d+$/ })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  let nextNum = 1002;
+  if (lastPayment && lastPayment.receiptNumber) {
+    const match = lastPayment.receiptNumber.match(/REC-(\d+)/);
+    if (match) {
+      nextNum = parseInt(match[1], 10) + 1;
+    }
+  }
+
+  let receiptNumber = `REC-${nextNum}`;
+  let exists = await Payment.exists({ receiptNumber });
+  while (exists) {
+    nextNum += 1;
+    receiptNumber = `REC-${nextNum}`;
+    exists = await Payment.exists({ receiptNumber });
+  }
+
+  return receiptNumber;
+};
+
 export const processPayment = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const {
@@ -73,8 +97,7 @@ export const processPayment = async (req: AuthenticatedRequest, res: Response): 
     }
 
     const payAmount = amount || order.total;
-    const count = await Payment.countDocuments();
-    const receiptNumber = `REC-${1000 + count}`;
+    const receiptNumber = await generateUniqueReceiptNumber();
 
     const cashierName = req.user?.role === 'cashier'
       ? req.user.name
