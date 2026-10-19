@@ -105,6 +105,8 @@ export const validateCoupon = async (req: Request, res: Response): Promise<void>
         code: coupon.code,
         type: coupon.type,
         value: coupon.value,
+        minOrder: coupon.minOrder,
+        maxDiscount: coupon.maxDiscount,
       },
     });
   } catch (error: any) {

@@ -488,9 +488,10 @@ const seedDatabase = async () => {
 
     console.log('[Seed] Seeding Coupons...');
     const couponsData = [
-      { code: 'SAVE20', type: 'percentage', value: 20, minOrder: 500, maxDiscount: 300, expiry: '2026-10-30', usageLimit: 100, used: 34, active: true },
+      { code: 'SAVE20', type: 'percentage', value: 20, minOrder: 400, maxDiscount: 300, expiry: '2026-10-30', usageLimit: 100, used: 34, active: true },
+      { code: 'SAVE30', type: 'percentage', value: 30, minOrder: 500, maxDiscount: 400, expiry: '2026-10-31', usageLimit: 100, used: 12, active: true },
       { code: 'WEEKEND50', type: 'fixed', value: 50, minOrder: 300, maxDiscount: undefined, expiry: '2026-10-31', usageLimit: 50, used: 12, active: true },
-      { code: 'FREEDEL', type: 'fixed', value: 50, minOrder: 1000, maxDiscount: undefined, expiry: '2026-11-15', usageLimit: 200, used: 67, active: true },
+      { code: 'FREEDEL', type: 'fixed', value: 50, minOrder: 600, maxDiscount: undefined, expiry: '2026-11-15', usageLimit: 200, used: 67, active: true },
       { code: 'COMBO15', type: 'percentage', value: 15, minOrder: 800, maxDiscount: 200, expiry: '2026-10-20', usageLimit: 30, used: 30, active: false },
     ];
     await Coupon.insertMany(couponsData);
