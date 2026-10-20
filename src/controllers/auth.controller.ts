@@ -235,3 +235,52 @@ export const getMe = async (req: AuthenticatedRequest, res: Response): Promise<v
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const updateProfile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized' });
+      return;
+    }
+
+    const { name, phone, avatar, password } = req.body;
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    if (name && typeof name === 'string' && name.trim()) {
+      user.name = name.trim();
+    }
+    if (phone !== undefined) {
+      user.phone = typeof phone === 'string' ? phone.trim() : '';
+    }
+    if (avatar !== undefined) {
+      user.avatar = avatar;
+    }
+    if (!['delivery', 'cashier', 'kitchen', 'waiter'].includes(user.role) && password && typeof password === 'string' && password.trim().length >= 6) {
+      user.password = password.trim();
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        status: user.status,
+        isMainAdmin: user.isMainAdmin,
+        avatar: user.avatar,
+        joinDate: user.joinDate,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
