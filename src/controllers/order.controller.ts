@@ -173,6 +173,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
       type: 'order',
       orderId: order._id.toString(),
       recipientRole: 'cashier',
+      targetRoles: ['cashier', 'kitchen', 'admin', 'manager'],
     });
 
     res.status(201).json({
@@ -248,7 +249,7 @@ export const getOrderById = async (req: AuthenticatedRequest, res: Response): Pr
   }
 };
 
-// Helper to save Notification to DB and push real-time socket alert to all target roles
+// Helper to save Notification to DB and push real-time socket alert ONLY to target roles
 const emitSocketAndCreateNotification = async ({
   title,
   message,
@@ -265,12 +266,16 @@ const emitSocketAndCreateNotification = async ({
   roles?: string[];
 }) => {
   try {
+    // Always include admin & manager so they see everything
+    const targetRoles = Array.from(new Set([...roles, 'admin', 'manager']));
+
     const notif = await Notification.create({
       title,
       message,
       type,
       orderId,
       tableNumber,
+      targetRoles,
     });
 
     const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
@@ -281,20 +286,18 @@ const emitSocketAndCreateNotification = async ({
         message: notif.message,
         type: notif.type,
         orderId: notif.orderId,
+        targetRoles,
         read: false,
         time: 'Just now',
       };
-      const uniqueRoles = Array.from(new Set([...roles, 'admin', 'manager', 'customer']));
-      uniqueRoles.forEach((r) => {
+
+      // ONLY emit to the specific targeted role rooms — no global broadcast
+      targetRoles.forEach((r) => {
         io.to(`role:${r}`).emit('notification', payload);
       });
 
-      // Broadcast globally so all active customer panels, order trackers & notification bells update instantly
-      io.emit('notification', payload);
-
-      // Send to specific order room and global customer listeners
+      // Send order-specific updates to customers tracking that order
       if (orderId) {
-        io.to(`order:${orderId}`).emit('notification', payload);
         io.to(`order:${orderId}`).emit('order:customer_update', {
           orderId,
           title,
@@ -302,17 +305,14 @@ const emitSocketAndCreateNotification = async ({
           type,
           time: 'Just now',
         });
-        io.emit('order:customer_update', {
-          orderId,
-          title,
-          message,
-          type,
-          time: 'Just now',
-        });
+
+        // Also send notification to customer role room for their bell
+        const customerPayload = { ...payload, targetRoles: ['customer'] };
+        io.to(`role:customer`).emit('notification', customerPayload);
       }
     }
 
-    // Also persist customer notification in database for customer panel
+    // Persist a separate customer notification in DB so customer panel can fetch it
     if (orderId) {
       await Notification.create({
         title,
@@ -321,6 +321,7 @@ const emitSocketAndCreateNotification = async ({
         orderId,
         tableNumber,
         recipientRole: 'customer',
+        targetRoles: ['customer'],
       });
     }
 
@@ -586,7 +587,7 @@ export const deliveryMarkOutForDelivery = async (req: AuthenticatedRequest, res:
       message: `Order ${order.orderNumber} is out for delivery with rider`,
       type: 'delivery',
       orderId: order._id.toString(),
-      roles: ['admin', 'manager', 'cashier', 'delivery', 'kitchen'],
+      roles: ['delivery', 'cashier'],
     });
 
     res.status(200).json({
@@ -627,7 +628,7 @@ export const deliveryMarkDelivered = async (req: AuthenticatedRequest, res: Resp
       message: `Order ${order.orderNumber} has been delivered successfully to customer`,
       type: 'delivery',
       orderId: order._id.toString(),
-      roles: ['kitchen', 'admin', 'manager', 'cashier', 'delivery'],
+      roles: ['delivery', 'cashier'],
     });
 
     res.status(200).json({
