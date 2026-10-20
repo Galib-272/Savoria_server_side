@@ -7,12 +7,27 @@ export const getNotifications = async (req: AuthenticatedRequest, res: Response)
     const role = req.user?.role;
     const filter: any = {};
 
-    // Return notifications applicable to this user's role or general (admin and manager see all)
+    // Admin & manager see all notifications
+    // Other roles only see notifications targeted to their role
     if (role && role !== 'admin' && role !== 'manager') {
       filter.$or = [
+        // New system: role is in targetRoles array
+        { targetRoles: role },
+        // Legacy: recipientRole matches
         { recipientRole: role },
-        { recipientRole: { $exists: false } },
-        { recipientRole: null },
+        // Notifications with no targeting at all (legacy/general)
+        {
+          $and: [
+            { targetRoles: { $size: 0 } },
+            { recipientRole: { $exists: false } },
+          ],
+        },
+        {
+          $and: [
+            { targetRoles: { $exists: false } },
+            { recipientRole: { $exists: false } },
+          ],
+        },
       ];
     }
 
@@ -26,6 +41,7 @@ export const getNotifications = async (req: AuthenticatedRequest, res: Response)
       read: n.read,
       time: n.time || 'Just now',
       orderId: n.orderId,
+      targetRoles: n.targetRoles || [],
     }));
 
     res.status(200).json({ success: true, count: formatted.length, data: formatted });
@@ -52,11 +68,25 @@ export const markAsRead = async (req: AuthenticatedRequest, res: Response): Prom
 
 export const markAllAsRead = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    await Notification.updateMany({ read: false }, { read: true });
+    const role = req.user?.role;
+    const filter: any = { read: false };
+
+    // Non-admin/manager should only mark their own notifications as read
+    if (role && role !== 'admin' && role !== 'manager') {
+      filter.$or = [
+        { targetRoles: role },
+        { recipientRole: role },
+      ];
+    }
+
+    await Notification.updateMany(filter, { read: true });
 
     const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
     if (io) {
-      io.emit('notification:read_all');
+      // Emit only to the user's role room so other panels are unaffected
+      if (role) {
+        io.to(`role:${role}`).emit('notification:read_all');
+      }
     }
 
     res.status(200).json({ success: true, message: 'All notifications marked as read' });
@@ -67,11 +97,24 @@ export const markAllAsRead = async (req: AuthenticatedRequest, res: Response): P
 
 export const clearAllNotifications = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    await Notification.deleteMany({});
+    const role = req.user?.role;
+    const filter: any = {};
+
+    // Non-admin/manager should only clear their own notifications
+    if (role && role !== 'admin' && role !== 'manager') {
+      filter.$or = [
+        { targetRoles: role },
+        { recipientRole: role },
+      ];
+    }
+
+    await Notification.deleteMany(filter);
 
     const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
     if (io) {
-      io.emit('notification:cleared_all');
+      if (role) {
+        io.to(`role:${role}`).emit('notification:cleared_all');
+      }
     }
 
     res.status(200).json({ success: true, message: 'All notifications cleared' });

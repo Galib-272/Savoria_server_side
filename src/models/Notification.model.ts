@@ -8,6 +8,7 @@ export interface INotification extends Document {
   time: string;
   recipientRole?: string;
   recipientId?: string;
+  targetRoles?: string[];
   orderId?: string;
   tableNumber?: number;
   createdAt: Date;
@@ -27,6 +28,7 @@ const NotificationSchema = new Schema<INotification>(
     time: { type: String, default: 'Just now' },
     recipientRole: { type: String },
     recipientId: { type: String },
+    targetRoles: { type: [String], default: [] },
     orderId: { type: String },
     tableNumber: { type: Number },
   },
