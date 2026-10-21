@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface INotification extends Document {
   title: string;
   message: string;
-  type: 'order' | 'kitchen' | 'table' | 'delivery' | 'inventory' | 'payment' | 'system';
+  type: 'order' | 'kitchen' | 'table' | 'delivery' | 'inventory' | 'payment' | 'system' | 'reservation';
   read: boolean;
   time: string;
   recipientRole?: string;
@@ -11,6 +11,7 @@ export interface INotification extends Document {
   targetRoles?: string[];
   orderId?: string;
   tableNumber?: number;
+  reservationId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,7 +22,7 @@ const NotificationSchema = new Schema<INotification>(
     message: { type: String, required: true },
     type: {
       type: String,
-      enum: ['order', 'kitchen', 'table', 'delivery', 'inventory', 'payment', 'system'],
+      enum: ['order', 'kitchen', 'table', 'delivery', 'inventory', 'payment', 'system', 'reservation'],
       required: true,
     },
     read: { type: Boolean, default: false },
@@ -31,6 +32,7 @@ const NotificationSchema = new Schema<INotification>(
     targetRoles: { type: [String], default: [] },
     orderId: { type: String },
     tableNumber: { type: Number },
+    reservationId: { type: String },
   },
   { timestamps: true }
 );

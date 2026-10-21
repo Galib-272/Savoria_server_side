@@ -106,3 +106,53 @@ export const emitLowStockAlert = (item: any): void => {
   ioInstance.to('role:manager').emit('inventory:low_stock', item);
   ioInstance.to('role:admin').emit('inventory:low_stock', item);
 };
+
+// Reservation emitters
+export const emitNewReservationRequest = (reservation: any, notification: any): void => {
+  if (!ioInstance) return;
+  // Notify all waiters, managers, and admins about new reservation request
+  ioInstance.to('role:waiter').emit('reservation:new_request', { reservation, notification });
+  ioInstance.to('role:manager').emit('reservation:new_request', { reservation, notification });
+  ioInstance.to('role:admin').emit('reservation:new_request', { reservation, notification });
+
+  const notifPayload = {
+    id: notification.id || notification._id,
+    title: notification.title,
+    message: notification.message,
+    type: 'reservation',
+    targetRoles: ['waiter', 'manager', 'admin'],
+    reservationId: notification.reservationId,
+    tableNumber: notification.tableNumber,
+    time: notification.time || 'Just now',
+    createdAt: new Date().toISOString(),
+  };
+  ioInstance.to('role:waiter').emit('notification', notifPayload);
+  ioInstance.to('role:manager').emit('notification', notifPayload);
+  ioInstance.to('role:admin').emit('notification', notifPayload);
+};
+
+export const emitReservationStatusUpdate = (reservation: any, notification: any): void => {
+  if (!ioInstance) return;
+  // Notify all roles about reservation status change
+  ioInstance.to('role:customer').emit('reservation:status_update', { reservation, notification });
+  ioInstance.to('role:waiter').emit('reservation:status_update', { reservation, notification });
+  ioInstance.to('role:manager').emit('reservation:status_update', { reservation, notification });
+  ioInstance.to('role:admin').emit('reservation:status_update', { reservation, notification });
+
+  const notifPayload = {
+    id: notification.id || notification._id,
+    title: notification.title,
+    message: notification.message,
+    type: 'reservation',
+    targetRoles: ['customer', 'waiter', 'manager', 'admin'],
+    recipientId: reservation.customerId,
+    reservationId: notification.reservationId,
+    tableNumber: notification.tableNumber,
+    time: notification.time || 'Just now',
+    createdAt: new Date().toISOString(),
+  };
+  ioInstance.to('role:customer').emit('notification', notifPayload);
+  ioInstance.to('role:waiter').emit('notification', notifPayload);
+  ioInstance.to('role:manager').emit('notification', notifPayload);
+  ioInstance.to('role:admin').emit('notification', notifPayload);
+};
