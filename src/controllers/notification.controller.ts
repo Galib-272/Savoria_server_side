@@ -15,17 +15,21 @@ export const getNotifications = async (req: AuthenticatedRequest, res: Response)
         { targetRoles: role },
         // Legacy: recipientRole matches
         { recipientRole: role },
+        // Match specific recipient user ID if set
+        ...(req.user?.userId ? [{ recipientId: req.user.userId }] : []),
         // Notifications with no targeting at all (legacy/general)
         {
           $and: [
             { targetRoles: { $size: 0 } },
             { recipientRole: { $exists: false } },
+            { recipientId: { $exists: false } },
           ],
         },
         {
           $and: [
             { targetRoles: { $exists: false } },
             { recipientRole: { $exists: false } },
+            { recipientId: { $exists: false } },
           ],
         },
       ];
@@ -41,6 +45,8 @@ export const getNotifications = async (req: AuthenticatedRequest, res: Response)
       read: n.read,
       time: n.time || 'Just now',
       orderId: n.orderId,
+      reservationId: n.reservationId,
+      tableNumber: n.tableNumber,
       targetRoles: n.targetRoles || [],
     }));
 

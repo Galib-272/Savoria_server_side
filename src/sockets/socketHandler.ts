@@ -133,7 +133,8 @@ export const emitNewReservationRequest = (reservation: any, notification: any): 
 
 export const emitReservationStatusUpdate = (reservation: any, notification: any): void => {
   if (!ioInstance) return;
-  // Notify all roles about reservation status change
+  // Notify all roles and general broadcast about reservation status change
+  ioInstance.emit('reservation:status_update', { reservation, notification });
   ioInstance.to('role:customer').emit('reservation:status_update', { reservation, notification });
   ioInstance.to('role:waiter').emit('reservation:status_update', { reservation, notification });
   ioInstance.to('role:manager').emit('reservation:status_update', { reservation, notification });
@@ -146,11 +147,12 @@ export const emitReservationStatusUpdate = (reservation: any, notification: any)
     type: 'reservation',
     targetRoles: ['customer', 'waiter', 'manager', 'admin'],
     recipientId: reservation.customerId,
-    reservationId: notification.reservationId,
-    tableNumber: notification.tableNumber,
+    reservationId: notification.reservationId || reservation._id?.toString(),
+    tableNumber: notification.tableNumber || reservation.tableNumber,
     time: notification.time || 'Just now',
     createdAt: new Date().toISOString(),
   };
+  ioInstance.emit('notification', notifPayload);
   ioInstance.to('role:customer').emit('notification', notifPayload);
   ioInstance.to('role:waiter').emit('notification', notifPayload);
   ioInstance.to('role:manager').emit('notification', notifPayload);
