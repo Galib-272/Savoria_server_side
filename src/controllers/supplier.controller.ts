@@ -4,6 +4,7 @@ import { Purchase } from '../models/Purchase.model.js';
 import { InventoryItem } from '../models/Inventory.model.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { AuditLog } from '../models/AuditLog.model.js';
+import { escapeRegex, isValidObjectId, nextSequence, pick } from '../utils/helpers.js';
 
 // --- SUPPLIERS ---
 export const getSuppliers = async (req: Request, res: Response): Promise<void> => {
@@ -43,7 +44,12 @@ export const createSupplier = async (req: AuthenticatedRequest, res: Response): 
 export const updateSupplier = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const supplier = await Supplier.findByIdAndUpdate(id, req.body, { new: true });
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ success: false, message: 'Invalid supplier id' });
+      return;
+    }
+    const updates = pick(req.body, ['name', 'company', 'phone', 'email', 'address', 'products', 'status']);
+    const supplier = await Supplier.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
     if (!supplier) {
       res.status(404).json({ success: false, message: 'Supplier not found' });
       return;
@@ -57,6 +63,10 @@ export const updateSupplier = async (req: AuthenticatedRequest, res: Response): 
 export const deleteSupplier = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ success: false, message: 'Invalid supplier id' });
+      return;
+    }
     await Supplier.findByIdAndDelete(id);
     res.status(200).json({ success: true, message: 'Supplier deleted' });
   } catch (error: any) {
@@ -92,13 +102,23 @@ export const createPurchase = async (req: AuthenticatedRequest, res: Response): 
       return;
     }
 
-    const count = await Purchase.countDocuments();
-    const purchaseNumber = `#P${102 + count}`;
+    const cleanItems = (Array.isArray(items) ? items : [])
+      .map((i: any) => ({ name: String(i.name || '').trim(), quantity: Number(i.quantity), unit: String(i.unit || '').trim(), cost: Number(i.cost) }))
+      .filter((i: any) => i.name && i.unit && i.quantity > 0 && i.cost >= 0);
+    if (cleanItems.length === 0) {
+      res.status(400).json({ success: false, message: 'Add at least one item with a name, unit, quantity and cost.' });
+      return;
+    }
+    const seq = await nextSequence('purchase', async () => {
+      const all = await Purchase.find({ purchaseNumber: /^#P\d+$/ }).select('purchaseNumber').lean();
+      return all.reduce((max, p) => Math.max(max, parseInt(p.purchaseNumber.slice(2), 10) || 0), 101);
+    });
+    const purchaseNumber = `#P${seq}`;
 
     const purchase = await Purchase.create({
       purchaseNumber,
       supplierName,
-      items,
+      items: cleanItems,
       total: Number(total),
       date: date || new Date().toISOString().split('T')[0],
       status,
@@ -106,8 +126,8 @@ export const createPurchase = async (req: AuthenticatedRequest, res: Response): 
 
     // If completed, automatically update inventory items
     if (status === 'completed') {
-      for (const item of items) {
-        const inv = await InventoryItem.findOne({ name: item.name });
+      for (const item of cleanItems) {
+        const inv = await InventoryItem.findOne({ name: { $regex: `^${escapeRegex(item.name)}$`, $options: 'i' } });
         if (inv) {
           inv.currentStock += Number(item.quantity);
           await inv.save();

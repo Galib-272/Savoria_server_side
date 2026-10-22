@@ -15,6 +15,7 @@ import notificationRoutes from './notification.routes.js';
 import reportRoutes from './report.routes.js';
 import auditRoutes from './audit.routes.js';
 import settingRoutes from './setting.routes.js';
+import { submitContactMessage } from '../controllers/contact.controller.js';
 
 const router = Router();
 
@@ -38,5 +39,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/reports', reportRoutes);
 router.use('/audit-logs', auditRoutes);
 router.use('/settings', settingRoutes);
+router.post('/contact', submitContactMessage);
 
 export default router;

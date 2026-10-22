@@ -3,16 +3,29 @@ import { InventoryItem } from '../models/Inventory.model.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { emitLowStockAlert } from '../sockets/socketHandler.js';
 import { AuditLog } from '../models/AuditLog.model.js';
-import { Notification } from '../models/Notification.model.js';
+import { notify } from '../services/notification.service.js';
+import { escapeRegex, isValidObjectId, pick } from '../utils/helpers.js';
+
+const alertIfLow = async (item: any, previousStatus?: string) => {
+  if ((item.status === 'low_stock' || item.status === 'out_of_stock') && item.status !== previousStatus) {
+    emitLowStockAlert(item);
+    await notify({
+      title: item.status === 'out_of_stock' ? 'Out of Stock' : 'Low Stock Alert',
+      message: `${item.name} is ${item.status === 'out_of_stock' ? 'out of stock' : 'running low'} (${item.currentStock} ${item.unit} left, minimum ${item.minStock})`,
+      type: 'inventory',
+      roles: ['kitchen'],
+    });
+  }
+};
 
 export const getInventoryItems = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status, category, search } = req.query;
     const filter: any = {};
 
-    if (status) filter.status = status;
-    if (category) filter.category = category;
-    if (search) filter.name = { $regex: search as string, $options: 'i' };
+    if (status) filter.status = String(status);
+    if (category) filter.category = String(category);
+    if (search) filter.name = { $regex: escapeRegex(search), $options: 'i' };
 
     const items = await InventoryItem.find(filter).sort({ name: 1 });
 
@@ -45,6 +58,10 @@ export const createInventoryItem = async (req: AuthenticatedRequest, res: Respon
       return;
     }
 
+    if ([currentStock, minStock, maxStock, cost].some((n) => Number.isNaN(Number(n)) || Number(n) < 0)) {
+      res.status(400).json({ success: false, message: 'Stock levels and cost must be positive numbers.' });
+      return;
+    }
     const item = await InventoryItem.create({
       name,
       category,
@@ -67,6 +84,7 @@ export const createInventoryItem = async (req: AuthenticatedRequest, res: Respon
       details: `Created inventory item ${item.name} (${item.currentStock} ${item.unit})`,
     });
 
+    await alertIfLow(item);
     res.status(201).json({ success: true, message: 'Inventory item created', data: item });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -76,24 +94,26 @@ export const createInventoryItem = async (req: AuthenticatedRequest, res: Respon
 export const updateInventoryItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const item = await InventoryItem.findById(id);
+    const item = isValidObjectId(id) ? await InventoryItem.findById(id) : null;
     if (!item) {
       res.status(404).json({ success: false, message: 'Inventory item not found.' });
       return;
     }
 
-    Object.assign(item, req.body);
-    await item.save();
-
-    if (item.status === 'low_stock' || item.status === 'out_of_stock') {
-      emitLowStockAlert(item);
-      await Notification.create({
-        title: 'Low Stock Alert',
-        message: `${item.name} stock is low (${item.currentStock} ${item.unit} remaining)`,
-        type: 'inventory',
-        recipientRole: 'manager',
-      });
+    const previousStatus = item.status;
+    const updates: any = pick(req.body, ['name', 'category', 'unit', 'currentStock', 'minStock', 'maxStock', 'cost', 'supplier', 'expirationDate']);
+    for (const key of ['currentStock', 'minStock', 'maxStock', 'cost']) {
+      if (updates[key] !== undefined) {
+        updates[key] = Number(updates[key]);
+        if (Number.isNaN(updates[key]) || updates[key] < 0) {
+          res.status(400).json({ success: false, message: `${key} must be a positive number.` });
+          return;
+        }
+      }
     }
+    Object.assign(item, updates);
+    await item.save();
+    await alertIfLow(item, previousStatus);
 
     res.status(200).json({ success: true, data: item });
   } catch (error: any) {
@@ -106,19 +126,22 @@ export const adjustStock = async (req: AuthenticatedRequest, res: Response): Pro
     const { id } = req.params;
     const { changeAmount, reason } = req.body; // positive to add, negative to reduce
 
-    const item = await InventoryItem.findById(id);
+    const item = isValidObjectId(id) ? await InventoryItem.findById(id) : null;
     if (!item) {
       res.status(404).json({ success: false, message: 'Inventory item not found.' });
       return;
     }
+    const delta = Number(changeAmount);
+    if (!Number.isFinite(delta) || delta === 0) {
+      res.status(400).json({ success: false, message: 'Enter a non-zero amount to add or remove.' });
+      return;
+    }
 
     const previousStock = item.currentStock;
-    item.currentStock = Math.max(0, item.currentStock + Number(changeAmount));
+    const previousStatus = item.status;
+    item.currentStock = Math.max(0, +(item.currentStock + delta).toFixed(3));
     await item.save();
-
-    if (item.status === 'low_stock' || item.status === 'out_of_stock') {
-      emitLowStockAlert(item);
-    }
+    await alertIfLow(item, previousStatus);
 
     await AuditLog.create({
       userId: req.user?.userId,
@@ -143,7 +166,11 @@ export const adjustStock = async (req: AuthenticatedRequest, res: Response): Pro
 export const deleteInventoryItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    await InventoryItem.findByIdAndDelete(id);
+    const deleted = isValidObjectId(id) ? await InventoryItem.findByIdAndDelete(id) : null;
+    if (!deleted) {
+      res.status(404).json({ success: false, message: 'Inventory item not found.' });
+      return;
+    }
     res.status(200).json({ success: true, message: 'Inventory item deleted.' });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

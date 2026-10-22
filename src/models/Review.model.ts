@@ -7,6 +7,7 @@ export interface IReview extends Document {
   comment: string;
   date: string;
   orderId?: string;
+  menuItemId?: string;
   avatar?: string;
   approved: boolean;
   createdAt: Date;
@@ -21,6 +22,7 @@ const ReviewSchema = new Schema<IReview>(
     comment: { type: String, required: true },
     date: { type: String, default: () => new Date().toISOString().split('T')[0] },
     orderId: { type: String },
+    menuItemId: { type: String },
     avatar: { type: String },
     approved: { type: Boolean, default: true },
   },
