@@ -3,6 +3,9 @@ import { MenuCategory } from '../models/MenuCategory.model.js';
 import { MenuItem } from '../models/MenuItem.model.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { AuditLog } from '../models/AuditLog.model.js';
+import { escapeRegex, isValidObjectId, pick } from '../utils/helpers.js';
+
+const MENU_ITEM_FIELDS = ['name', 'description', 'price', 'discountPrice', 'image', 'categoryId', 'available', 'featured', 'popular', 'prepTime', 'ingredients', 'allergens', 'modifiers', 'recipe'];
 
 // --- CATEGORIES ---
 export const getCategories = async (req: Request, res: Response): Promise<void> => {
@@ -12,6 +15,7 @@ export const getCategories = async (req: Request, res: Response): Promise<void> 
       id: c._id.toString(),
       name: c.name,
       icon: c.icon,
+      image: c.image || '',
       active: c.active,
       order: c.order,
     }));
@@ -23,7 +27,7 @@ export const getCategories = async (req: Request, res: Response): Promise<void> 
 
 export const createCategory = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { name, icon, order, active } = req.body;
+    const { name, icon, order, active, image } = req.body;
     if (!name) {
       res.status(400).json({ success: false, message: 'Category name is required.' });
       return;
@@ -32,6 +36,7 @@ export const createCategory = async (req: AuthenticatedRequest, res: Response): 
     const category = await MenuCategory.create({
       name,
       icon: icon || '🍽️',
+      image: typeof image === 'string' ? image : '',
       order: order || 0,
       active: active !== undefined ? active : true,
     });
@@ -43,6 +48,7 @@ export const createCategory = async (req: AuthenticatedRequest, res: Response): 
         id: category._id.toString(),
         name: category.name,
         icon: category.icon,
+        image: category.image,
         active: category.active,
         order: category.order,
       },
@@ -55,11 +61,18 @@ export const createCategory = async (req: AuthenticatedRequest, res: Response): 
 export const updateCategory = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const category = await MenuCategory.findByIdAndUpdate(id, req.body, { new: true });
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ success: false, message: 'Invalid category id' });
+      return;
+    }
+    const updates = pick(req.body, ['name', 'icon', 'image', 'active', 'order']);
+    const category = await MenuCategory.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
     if (!category) {
       res.status(404).json({ success: false, message: 'Category not found' });
       return;
     }
+    // keep the denormalised category name on menu items in sync
+    if (updates.name) await MenuItem.updateMany({ categoryId: id }, { categoryName: category.name });
     res.status(200).json({ success: true, data: category });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -69,6 +82,14 @@ export const updateCategory = async (req: AuthenticatedRequest, res: Response): 
 export const deleteCategory = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    const itemCount = await MenuItem.countDocuments({ categoryId: id });
+    if (itemCount > 0) {
+      res.status(409).json({
+        success: false,
+        message: `This category still has ${itemCount} menu item(s). Move or delete them first.`,
+      });
+      return;
+    }
     await MenuCategory.findByIdAndDelete(id);
     res.status(200).json({ success: true, message: 'Category deleted successfully' });
   } catch (error: any) {
@@ -82,14 +103,14 @@ export const getMenuItems = async (req: Request, res: Response): Promise<void> =
     const { categoryId, search, featured, popular, available } = req.query;
     const filter: any = {};
 
-    if (categoryId) filter.categoryId = categoryId;
+    if (categoryId) filter.categoryId = String(categoryId);
     if (featured !== undefined) filter.featured = featured === 'true';
     if (popular !== undefined) filter.popular = popular === 'true';
     if (available !== undefined) filter.available = available === 'true';
     if (search) {
       filter.$or = [
-        { name: { $regex: search as string, $options: 'i' } },
-        { description: { $regex: search as string, $options: 'i' } },
+        { name: { $regex: escapeRegex(search), $options: 'i' } },
+        { description: { $regex: escapeRegex(search), $options: 'i' } },
       ];
     }
 
@@ -124,7 +145,7 @@ export const getMenuItems = async (req: Request, res: Response): Promise<void> =
 export const getMenuItemById = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const item = await MenuItem.findById(id);
+    const item = isValidObjectId(id) ? await MenuItem.findById(id) : null;
     if (!item) {
       res.status(404).json({ success: false, message: 'Menu item not found' });
       return;
@@ -160,22 +181,31 @@ export const getMenuItemById = async (req: Request, res: Response): Promise<void
 export const createMenuItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { name, description, price, discountPrice, image, categoryId, prepTime, ingredients, allergens, modifiers, recipe, featured, popular } = req.body;
+    const cleanDiscount = discountPrice === '' || discountPrice === null || discountPrice === undefined ? undefined : Number(discountPrice);
 
     if (!name || price === undefined || !categoryId) {
       res.status(400).json({ success: false, message: 'Name, price, and categoryId are required.' });
       return;
     }
 
-    const category = await MenuCategory.findById(categoryId);
+    const category = isValidObjectId(categoryId) ? await MenuCategory.findById(categoryId) : null;
+    if (!category) {
+      res.status(400).json({ success: false, message: 'Please choose a valid category.' });
+      return;
+    }
+    if (!(Number(price) >= 0)) {
+      res.status(400).json({ success: false, message: 'Price must be a positive number.' });
+      return;
+    }
 
     const item = await MenuItem.create({
       name,
       description: description || '',
       price,
-      discountPrice,
+      discountPrice: cleanDiscount,
       image: image || 'https://images.pexels.com/photos/1639557/pexels-photo-1639557.jpeg?auto=compress&cs=tinysrgb&w=600',
       categoryId,
-      categoryName: category?.name,
+      categoryName: category.name,
       prepTime: prepTime || 15,
       ingredients: ingredients || [],
       allergens: allergens || [],
@@ -183,7 +213,7 @@ export const createMenuItem = async (req: AuthenticatedRequest, res: Response): 
       recipe: recipe || [],
       featured: !!featured,
       popular: !!popular,
-      available: true,
+      available: req.body.available !== false,
     });
 
     await AuditLog.create({
@@ -205,7 +235,24 @@ export const createMenuItem = async (req: AuthenticatedRequest, res: Response): 
 export const updateMenuItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const item = await MenuItem.findByIdAndUpdate(id, req.body, { new: true });
+    if (!isValidObjectId(id)) {
+      res.status(400).json({ success: false, message: 'Invalid menu item id' });
+      return;
+    }
+    const updates: any = pick(req.body, MENU_ITEM_FIELDS);
+    if (updates.categoryId) {
+      const category = isValidObjectId(updates.categoryId) ? await MenuCategory.findById(updates.categoryId) : null;
+      if (!category) {
+        res.status(400).json({ success: false, message: 'Please choose a valid category.' });
+        return;
+      }
+      updates.categoryName = category.name;
+    }
+    if (updates.discountPrice === '' || updates.discountPrice === null) {
+      delete updates.discountPrice;
+      updates.$unset = { discountPrice: 1 };
+    }
+    const item = await MenuItem.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
     if (!item) {
       res.status(404).json({ success: false, message: 'Menu item not found' });
       return;

@@ -2,13 +2,17 @@ import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApp } from './app.js';
 import { connectDB } from './config/db.js';
+import { ensureMenuCatalog } from './services/menu-catalog.service.js';
 import { initSocket } from './sockets/socketHandler.js';
-import { ENV } from './config/env.js';
+import { ENV, isAllowedOrigin } from './config/env.js';
 
 const startServer = async () => {
   try {
     // 1. Connect to MongoDB
     await connectDB();
+
+    // 1b. Add the full Savoria menu once (only adds what's missing, never deletes)
+    await ensureMenuCatalog();
 
     // 2. Initialize Express App
     const app = createApp();
@@ -19,7 +23,7 @@ const startServer = async () => {
     // 4. Initialize Socket.IO
     const io = new SocketIOServer(server, {
       cors: {
-        origin: [ENV.CLIENT_URL, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+        origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
         credentials: true,
       },

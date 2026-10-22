@@ -16,6 +16,8 @@ import { Reservation } from '../models/Reservation.model.js';
 import { RestaurantSettings } from '../models/Settings.model.js';
 import { Payment } from '../models/Payment.model.js';
 import { AuditLog } from '../models/AuditLog.model.js';
+import { Counter } from '../models/Counter.model.js';
+import { CATALOG_CATEGORIES, CATALOG_ITEMS, CATALOG_VERSION } from './menuCatalog.js';
 
 const seedDatabase = async () => {
   try {
@@ -39,6 +41,7 @@ const seedDatabase = async () => {
       RestaurantSettings.deleteMany({}),
       Payment.deleteMany({}),
       AuditLog.deleteMany({}),
+      Counter.deleteMany({}),
     ]);
 
     console.log('[Seed] Seeding Restaurant Settings...');
@@ -223,17 +226,7 @@ const seedDatabase = async () => {
     await Table.insertMany(tablesData);
 
     console.log('[Seed] Seeding Menu Categories...');
-    const categoriesData = [
-      { name: 'Burgers', icon: '🍔', active: true, order: 1 },
-      { name: 'Pizza', icon: '🍕', active: true, order: 2 },
-      { name: 'Pasta', icon: '🍝', active: true, order: 3 },
-      { name: 'Chicken', icon: '🍗', active: true, order: 4 },
-      { name: 'Rice', icon: '🍚', active: true, order: 5 },
-      { name: 'Seafood', icon: '🦐', active: true, order: 6 },
-      { name: 'Drinks', icon: '🥤', active: true, order: 7 },
-      { name: 'Desserts', icon: '🍰', active: true, order: 8 },
-      { name: 'Snacks', icon: '🍟', active: true, order: 9 },
-    ];
+    const categoriesData = CATALOG_CATEGORIES.map((c) => ({ name: c.name, icon: c.icon, image: c.image, active: true, order: c.order }));
     const createdCategories = await MenuCategory.insertMany(categoriesData);
     const catMap = new Map(createdCategories.map((c) => [c.name, c._id.toString()]));
 
@@ -359,8 +352,8 @@ const seedDatabase = async () => {
         description: 'Aromatic basmati rice cooked with marinated chicken, saffron, and traditional spices.',
         price: 380,
         image: 'https://images.pexels.com/photos/12737656/pexels-photo-12737656.jpeg?auto=compress&cs=tinysrgb&w=600',
-        categoryId: catMap.get('Rice') || '',
-        categoryName: 'Rice',
+        categoryId: catMap.get('Biryani') || '',
+        categoryName: 'Biryani',
         available: true,
         featured: true,
         popular: true,
@@ -441,6 +434,28 @@ const seedDatabase = async () => {
       },
     ];
     await MenuItem.insertMany(menuItemsData);
+    await Counter.updateOne({ _id: 'menuCatalogVersion' }, { $set: { seq: CATALOG_VERSION } }, { upsert: true });
+    await MenuItem.insertMany(
+      CATALOG_ITEMS.map((item) => ({
+        name: item.name,
+        description: item.description,
+        price: item.price,
+        discountPrice: item.discountPrice,
+        image: item.image,
+        categoryId: catMap.get(item.category) || '',
+        categoryName: item.category,
+        available: true,
+        featured: !!item.featured,
+        popular: !!item.popular,
+        rating: 0,
+        reviewCount: 0,
+        prepTime: item.prepTime,
+        ingredients: item.ingredients || [],
+        allergens: item.allergens || [],
+        modifiers: item.modifiers || [],
+        recipe: [],
+      }))
+    );
 
     console.log('[Seed] Seeding Suppliers & Purchases...');
     const suppliersData = [
@@ -508,12 +523,12 @@ const seedDatabase = async () => {
 
     console.log('[Seed] Seeding Notifications...');
     const notificationsData = [
-      { title: 'New Order', message: 'Order #1029 has been placed', type: 'order', read: false, time: '2 min ago' },
-      { title: 'Order Ready', message: 'Order #1026 is ready to serve', type: 'kitchen', read: false, time: '5 min ago' },
-      { title: 'Low Stock Alert', message: 'Chicken stock is low (3kg remaining)', type: 'inventory', read: false, time: '15 min ago' },
-      { title: 'Bill Request', message: 'Table 12 requested the bill', type: 'table', read: true, time: '30 min ago' },
-      { title: 'Delivery Assigned', message: 'Order #1027 assigned to Jamal', type: 'delivery', read: true, time: '1 hr ago' },
-      { title: 'Payment Received', message: 'Payment of ৳970 received for Order #1028', type: 'payment', read: true, time: '2 hrs ago' },
+      { title: 'New Order', message: 'Order #1026 is waiting to be served', type: 'order', time: 'Earlier today', targetRoles: ['waiter', 'admin', 'manager'] },
+      { title: 'Order Ready', message: 'Order #1026 is ready to serve', type: 'kitchen', time: 'Earlier today', targetRoles: ['waiter', 'admin', 'manager'] },
+      { title: 'Low Stock Alert', message: 'Chicken stock is low (3kg remaining)', type: 'inventory', time: 'Earlier today', targetRoles: ['kitchen', 'admin', 'manager'] },
+      { title: 'Bill Request', message: 'Table 2 requested the bill', type: 'table', time: 'Earlier today', targetRoles: ['waiter', 'cashier', 'admin', 'manager'] },
+      { title: 'Delivery Assigned', message: 'Order #1027 assigned to Jamal', type: 'delivery', time: 'Earlier today', targetRoles: ['delivery', 'admin', 'manager'] },
+      { title: 'Payment Received', message: 'Payment of ৳970 received for Order #1028', type: 'payment', time: 'Earlier today', targetRoles: ['cashier', 'admin', 'manager'] },
     ];
     await Notification.insertMany(notificationsData);
 
@@ -636,7 +651,49 @@ const seedDatabase = async () => {
         ],
       },
     ];
-    const createdOrders = await Order.insertMany(ordersData);
+    const deliveryUser = await User.findOne({ email: 'delivery@savoria.com' });
+    const ordersWithFlags = ordersData.map((o) => ({
+      ...o,
+      // seeded orders past the kitchen stage have already used their ingredients
+      inventoryDeducted: ['ready', 'out_for_delivery', 'completed'].includes(o.status),
+      deliveryStaffId: o.deliveryStaffName ? deliveryUser?._id.toString() : undefined,
+    }));
+    const createdOrders = await Order.insertMany(ordersWithFlags);
+
+    // Make the floor map consistent with the seeded dine-in orders
+    for (const order of createdOrders) {
+      if (order.orderType !== 'dine-in' || !order.tableNumber) continue;
+      await Table.updateOne(
+        { number: order.tableNumber },
+        {
+          $set: {
+            status: 'occupied',
+            currentOrderId: order._id.toString(),
+            seats: ['S1', 'S2', 'S3', 'S4'].map((seatNumber) =>
+              (order.seats || []).includes(seatNumber)
+                ? { seatNumber, status: 'occupied', currentCustomerName: order.customerName, orderId: order._id.toString() }
+                : { seatNumber, status: 'available' }
+            ),
+          },
+        }
+      );
+    }
+    // Tables that were marked busy without a matching order/reservation start free
+    await Table.updateMany(
+      { number: { $in: [3, 8] } },
+      { $set: { status: 'available', seats: ['S1', 'S2', 'S3', 'S4'].map((seatNumber) => ({ seatNumber, status: 'available' })) }, $unset: { waiterName: 1 } }
+    );
+
+    // Paid delivery order #1027 → matching payment record
+    await Payment.create({
+      orderId: createdOrders[2]._id.toString(),
+      orderNumber: '#1027',
+      amount: 699,
+      paymentMethod: 'mobile_banking',
+      paymentStatus: 'paid',
+      cashierName: 'Tanvir Rahman (Online)',
+      receiptNumber: 'REC-1000',
+    });
 
     // Initial Payment
     await Payment.create({
