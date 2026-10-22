@@ -11,29 +11,36 @@ import {
   deliveryMarkDelivered,
   updateOrderStatus,
 } from '../controllers/order.controller.js';
-import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
+import { authenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/rbac.middleware.js';
 
 const router = Router();
 
-// Order creation can be done by customer (authenticated or guest checkout) or waiter/cashier POS
-router.post('/', optionalAuthenticate, createOrder);
-router.get('/', optionalAuthenticate, getAllOrders);
-router.get('/:id', optionalAuthenticate, getOrderById);
+// Every order endpoint requires a signed-in user (customers only ever see their own orders)
+router.use(authenticate);
+
+// Customers (online checkout) and front-of-house staff (POS / waiter) can place orders
+router.post('/', requireRole(['customer', 'cashier', 'waiter', 'admin', 'manager']), createOrder);
+router.get('/', getAllOrders);
+router.get('/:id', getOrderById);
 
 // Kitchen actions
-router.put('/:id/start-preparing', authenticate, requireRole(['admin', 'manager', 'kitchen']), startPreparingOrder);
-router.put('/:id/mark-ready', authenticate, requireRole(['admin', 'manager', 'kitchen']), markOrderReady);
+router.put('/:id/start-preparing', requireRole(['admin', 'manager', 'kitchen']), startPreparingOrder);
+router.put('/:id/mark-ready', requireRole(['admin', 'manager', 'kitchen']), markOrderReady);
 
 // Waiter actions
-router.put('/:id/waiter-claim', authenticate, requireRole(['admin', 'manager', 'waiter']), waiterClaimFood);
+router.put('/:id/waiter-claim', requireRole(['admin', 'manager', 'waiter']), waiterClaimFood);
 
 // Delivery actions
-router.put('/:id/delivery-pickup', authenticate, requireRole(['admin', 'manager', 'delivery']), deliveryPickupFood);
-router.put('/:id/delivery-out', authenticate, requireRole(['admin', 'manager', 'delivery']), deliveryMarkOutForDelivery);
-router.put('/:id/delivery-delivered', authenticate, requireRole(['admin', 'manager', 'delivery']), deliveryMarkDelivered);
+router.put('/:id/delivery-pickup', requireRole(['admin', 'manager', 'delivery']), deliveryPickupFood);
+router.put('/:id/delivery-out', requireRole(['admin', 'manager', 'delivery']), deliveryMarkOutForDelivery);
+router.put('/:id/delivery-delivered', requireRole(['admin', 'manager', 'delivery']), deliveryMarkDelivered);
 
-// General status update and customer pickup
-router.put('/:id/status', authenticate, requireRole(['admin', 'manager', 'cashier', 'waiter', 'customer']), updateOrderStatus);
+// Served / completed / cancelled (each transition is checked per role inside the controller)
+router.put(
+  '/:id/status',
+  requireRole(['admin', 'manager', 'cashier', 'waiter', 'kitchen', 'customer']),
+  updateOrderStatus
+);
 
 export default router;

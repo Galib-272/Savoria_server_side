@@ -1,10 +1,15 @@
 import { Request, Response } from 'express';
 import { Coupon } from '../models/Coupon.model.js';
 import { AuthenticatedRequest } from '../types/index.js';
+import { evaluateCoupon, CouponError } from '../services/coupon.service.js';
+import { isStaffRole, todayInRestaurantTz } from '../utils/helpers.js';
 
-export const getCoupons = async (req: Request, res: Response): Promise<void> => {
+export const getCoupons = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const coupons = await Coupon.find().sort({ createdAt: -1 });
+    // Public offers page: only live coupons. Management sees everything.
+    const showAll = isStaffRole(req.user?.role) && ['admin', 'manager'].includes(req.user!.role);
+    const filter = showAll ? {} : { active: true, expiry: { $gte: todayInRestaurantTz() } };
+    const coupons = (await Coupon.find(filter).sort({ createdAt: -1 })).filter((c) => showAll || c.used < c.usageLimit);
     const formatted = coupons.map((c) => ({
       id: c._id.toString(),
       code: c.code,
@@ -53,50 +58,11 @@ export const createCoupon = async (req: AuthenticatedRequest, res: Response): Pr
 export const validateCoupon = async (req: Request, res: Response): Promise<void> => {
   try {
     const { code, orderAmount } = req.body;
-
     if (!code || orderAmount === undefined) {
       res.status(400).json({ success: false, message: 'Coupon code and order amount are required.' });
       return;
     }
-
-    const coupon = await Coupon.findOne({ code: code.toUpperCase().trim(), active: true });
-    if (!coupon) {
-      res.status(404).json({ success: false, message: 'Invalid or inactive coupon code.' });
-      return;
-    }
-
-    // Check expiration
-    const today = new Date().toISOString().split('T')[0];
-    if (coupon.expiry < today) {
-      res.status(400).json({ success: false, message: 'This coupon code has expired.' });
-      return;
-    }
-
-    // Check usage limit
-    if (coupon.used >= coupon.usageLimit) {
-      res.status(400).json({ success: false, message: 'Coupon usage limit has been reached.' });
-      return;
-    }
-
-    // Check minimum order
-    if (Number(orderAmount) < coupon.minOrder) {
-      res.status(400).json({
-        success: false,
-        message: `Minimum order amount of ৳${coupon.minOrder} required to apply this coupon.`,
-      });
-      return;
-    }
-
-    let discount = 0;
-    if (coupon.type === 'percentage') {
-      discount = Math.round((Number(orderAmount) * coupon.value) / 100);
-      if (coupon.maxDiscount && discount > coupon.maxDiscount) {
-        discount = coupon.maxDiscount;
-      }
-    } else {
-      discount = coupon.value;
-    }
-
+    const { coupon, discount } = await evaluateCoupon(String(code), Number(orderAmount) || 0);
     res.status(200).json({
       success: true,
       message: 'Coupon code applied successfully',
@@ -110,7 +76,8 @@ export const validateCoupon = async (req: Request, res: Response): Promise<void>
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    const status = error instanceof CouponError ? error.status : 500;
+    res.status(status).json({ success: false, message: error.message });
   }
 };
 

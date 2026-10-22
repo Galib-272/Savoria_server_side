@@ -53,6 +53,9 @@ export interface IOrder extends Document {
   stripeChargeId?: string;
   paidAt?: Date;
   completedAt?: Date;
+  cancelledAt?: Date;
+  couponCode?: string;
+  inventoryDeducted: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -139,8 +142,14 @@ const OrderSchema = new Schema<IOrder>(
     stripeChargeId: { type: String },
     paidAt: { type: Date },
     completedAt: { type: Date },
+    cancelledAt: { type: Date },
+    couponCode: { type: String },
+    inventoryDeducted: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
+
+OrderSchema.index({ customerId: 1, createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
 
 export const Order = mongoose.model<IOrder>('Order', OrderSchema);

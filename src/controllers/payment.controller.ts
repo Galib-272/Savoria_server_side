@@ -1,217 +1,147 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { Payment } from '../models/Payment.model.js';
 import { Order } from '../models/Order.model.js';
 import { stripeClient, isStripeConfigured } from '../config/stripe.js';
 import { AuthenticatedRequest } from '../types/index.js';
-import { emitKitchenNewOrder, emitOrderUpdate } from '../sockets/socketHandler.js';
+import { emitOrderUpdate } from '../sockets/socketHandler.js';
 import { AuditLog } from '../models/AuditLog.model.js';
-import { Notification } from '../models/Notification.model.js';
+import { notify } from '../services/notification.service.js';
+import { normalizePaymentMethod, recordPaymentForOrder } from '../services/payment.service.js';
+import { isValidObjectId } from '../utils/helpers.js';
+
+export { generateUniqueReceiptNumber } from '../services/payment.service.js';
 
 export const createStripePaymentIntent = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { orderId, amount, currency = 'bdt' } = req.body;
+    const { orderId, currency = 'bdt' } = req.body;
+    let targetAmount = Number(req.body.amount);
 
-    let targetAmount = amount;
-    if (!targetAmount && orderId) {
+    if (!(targetAmount > 0) && orderId && isValidObjectId(orderId)) {
       const order = await Order.findById(orderId);
       if (order) targetAmount = order.total;
     }
-
-    if (!targetAmount) {
+    if (!(targetAmount > 0)) {
       res.status(400).json({ success: false, message: 'Valid payment amount is required.' });
       return;
     }
 
-    // If Stripe is configured with valid API keys
     if (isStripeConfigured() && stripeClient) {
       const paymentIntent = await stripeClient.paymentIntents.create({
-        amount: Math.round(targetAmount * 100), // convert to smallest currency unit (cents/poisha)
-        currency: currency.toLowerCase(),
-        metadata: {
-          orderId: orderId || '',
-          customerName: req.user?.name || '',
-          customerEmail: req.user?.email || '',
-        },
+        amount: Math.round(targetAmount * 100),
+        currency: String(currency).toLowerCase(),
+        metadata: { orderId: orderId || '', customerName: req.user?.name || '', customerEmail: req.user?.email || '' },
       });
-
-      res.status(200).json({
-        success: true,
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-      });
+      res.status(200).json({ success: true, clientSecret: paymentIntent.client_secret, paymentIntentId: paymentIntent.id });
       return;
     }
 
-    // In local development if Stripe keys are not yet provided in .env
+    // Demo mode: no real money is charged, any amount is accepted
+    const id = `pi_demo_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     res.status(200).json({
       success: true,
-      clientSecret: `mock_pi_${Date.now()}_secret_${Math.random().toString(36).substring(7)}`,
-      paymentIntentId: `pi_mock_${Date.now()}`,
+      clientSecret: `${id}_secret_demo`,
+      paymentIntentId: id,
       mock: true,
-      message: 'Running in development mode with simulated Stripe client secret. Add STRIPE_SECRET_KEY in .env for live Stripe gateway.',
+      message: 'Demo payment mode — no real money is charged.',
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-export const generateUniqueReceiptNumber = async (): Promise<string> => {
-  const lastPayment = await Payment.findOne({ receiptNumber: /^REC-\d+$/ })
-    .sort({ createdAt: -1 })
-    .lean();
-
-  let nextNum = 1002;
-  if (lastPayment && lastPayment.receiptNumber) {
-    const match = lastPayment.receiptNumber.match(/REC-(\d+)/);
-    if (match) {
-      nextNum = parseInt(match[1], 10) + 1;
-    }
-  }
-
-  let receiptNumber = `REC-${nextNum}`;
-  let exists = await Payment.exists({ receiptNumber });
-  while (exists) {
-    nextNum += 1;
-    receiptNumber = `REC-${nextNum}`;
-    exists = await Payment.exists({ receiptNumber });
-  }
-
-  return receiptNumber;
-};
-
+/** Cashier collects payment for an existing order (POS sale or pay-at-counter order). */
 export const processPayment = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const {
-      orderId,
-      paymentMethod = 'cash',
-      amount,
-      splitPayments,
-      notes,
-      stripePaymentIntentId,
-    } = req.body;
-
+    const { orderId, splitPayments, notes, stripePaymentIntentId } = req.body;
+    if (!isValidObjectId(orderId)) {
+      res.status(400).json({ success: false, message: 'Invalid order id.' });
+      return;
+    }
     const order = await Order.findById(orderId);
     if (!order) {
       res.status(404).json({ success: false, message: 'Order not found.' });
       return;
     }
-
-    const payAmount = amount || order.total;
-    const receiptNumber = await generateUniqueReceiptNumber();
-
-    const cashierName = req.user?.role === 'cashier'
-      ? req.user.name
-      : req.body.cashierName || (req.user?.name ? `${req.user.name} (Online)` : 'Customer (Online)');
-
-    const payment = await Payment.create({
-      orderId: order._id.toString(),
-      orderNumber: order.orderNumber,
-      amount: payAmount,
-      paymentMethod,
-      paymentStatus: 'paid',
-      cashierId: req.user?.userId,
-      cashierName,
-      receiptNumber,
-      stripePaymentIntentId,
-      splitPayments: splitPayments || [],
-      notes,
-    });
-
-    // Update order payment status
-    order.paymentStatus = 'paid';
-    order.paymentMethod = paymentMethod;
-    order.cashierId = req.user?.userId;
-    order.cashierName = cashierName;
-    order.paidAt = new Date();
-
-    // Move status to confirmed if it was new
-    if (order.status === 'new') {
-      order.status = 'confirmed';
+    if (order.status === 'cancelled') {
+      res.status(409).json({ success: false, message: 'This order was cancelled.' });
+      return;
     }
 
-    order.timeline.push({
-      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      status: 'confirmed',
-      label: `Payment Completed (৳${payAmount}) by ${order.cashierName} [Receipt: ${receiptNumber}]`,
+    const payment = await recordPaymentForOrder(order, {
+      method: normalizePaymentMethod(req.body.paymentMethod),
+      amount: order.total, // amount is always the order total
+      collectedBy: { userId: req.user!.userId, name: req.user!.name, role: req.user!.role },
+      splitPayments,
+      notes,
+      stripePaymentIntentId,
     });
-
     await order.save();
-
-    // Send notifications to kitchen and cashier
-    emitKitchenNewOrder(order);
     emitOrderUpdate(order);
 
-    const io = (global as any).io || (await import('../sockets/socketHandler.js')).getIO();
-    if (io) {
-      io.emit('payment:created', payment);
-    }
-
-    await Notification.create({
-      title: 'New Order to Prepare',
-      message: `Order ${order.orderNumber} is PAID (৳${order.total}). Ready for kitchen preparation.`,
-      type: 'kitchen',
+    await notify({
+      title: 'Payment Received',
+      message: `৳${payment.amount} received for Order ${order.orderNumber} via ${payment.paymentMethod.replace('_', ' ')} (${payment.receiptNumber})`,
+      type: 'payment',
+      roles: ['cashier'],
       orderId: order._id.toString(),
-      tableNumber: order.tableNumber,
-      recipientRole: 'kitchen',
+      actorId: req.user!.userId,
     });
 
     await AuditLog.create({
-      userId: req.user?.userId,
-      userName: req.user?.name || 'Cashier',
-      userRole: req.user?.role || 'cashier',
+      userId: req.user!.userId,
+      userName: req.user!.name,
+      userRole: req.user!.role,
       action: 'PROCESS_PAYMENT',
       entity: 'Payment',
       entityId: payment._id.toString(),
-      details: `Processed payment of ৳${payAmount} for ${order.orderNumber} via ${paymentMethod}`,
+      details: `Processed payment of ৳${payment.amount} for ${order.orderNumber} via ${payment.paymentMethod}`,
     });
 
-    res.status(200).json({
-      success: true,
-      message: 'Payment processed successfully and routed to Kitchen',
-      receiptNumber,
-      payment,
-      order,
-    });
+    res.status(200).json({ success: true, message: 'Payment processed successfully', receiptNumber: payment.receiptNumber, payment, order });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(error.status || 500).json({ success: false, message: error.message });
   }
 };
 
 export const getAllPayments = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { paymentMethod, page = 1, limit = 50 } = req.query;
+    const { paymentMethod } = req.query;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
     const filter: any = {};
-    if (paymentMethod) filter.paymentMethod = paymentMethod;
+    if (paymentMethod) filter.paymentMethod = String(paymentMethod);
 
-    const skip = (Number(page) - 1) * Number(limit);
-    const payments = await Payment.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit));
-    const total = await Payment.countDocuments(filter);
-
-    res.status(200).json({
-      success: true,
-      count: payments.length,
-      total,
-      page: Number(page),
-      data: payments,
-    });
+    const [payments, total] = await Promise.all([
+      Payment.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+      Payment.countDocuments(filter),
+    ]);
+    res.status(200).json({ success: true, count: payments.length, total, page, data: payments });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-export const getReceiptByOrder = async (req: Request, res: Response): Promise<void> => {
+export const getReceiptByOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { orderId } = req.params;
-    const payment = await Payment.findOne({
-      $or: [{ orderId }, { orderNumber: orderId }, { receiptNumber: orderId }],
-    });
-
+    const key = String(req.params.orderId);
+    const payment = await Payment.findOne({ $or: [{ orderId: key }, { orderNumber: key }, { receiptNumber: key }] });
     if (!payment) {
       res.status(404).json({ success: false, message: 'Receipt not found.' });
       return;
     }
+    const order = isValidObjectId(payment.orderId) ? await Order.findById(payment.orderId) : null;
 
-    const order = await Order.findById(payment.orderId);
+    // Customers may only open receipts of their own orders
+    if (req.user!.role === 'customer') {
+      const owns =
+        order &&
+        (order.customerId === req.user!.userId ||
+          (order.customerEmail || '').toLowerCase() === req.user!.email.toLowerCase());
+      if (!owns) {
+        res.status(404).json({ success: false, message: 'Receipt not found.' });
+        return;
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -224,11 +154,11 @@ export const getReceiptByOrder = async (req: Request, res: Response): Promise<vo
         amount: payment.amount,
         splitPayments: payment.splitPayments,
         items: order?.items || [],
-        subtotal: order?.subtotal || payment.amount,
-        tax: order?.tax || 0,
-        discount: order?.discount || 0,
-        deliveryFee: order?.deliveryFee || 0,
-        total: order?.total || payment.amount,
+        subtotal: order?.subtotal ?? payment.amount,
+        tax: order?.tax ?? 0,
+        discount: order?.discount ?? 0,
+        deliveryFee: order?.deliveryFee ?? 0,
+        total: order?.total ?? payment.amount,
       },
     });
   } catch (error: any) {

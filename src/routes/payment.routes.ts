@@ -5,19 +5,21 @@ import {
   getAllPayments,
   getReceiptByOrder,
 } from '../controllers/payment.controller.js';
-import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
+import { authenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/rbac.middleware.js';
 
 const router = Router();
 
-// Stripe Payment Intent (public or logged-in checkout)
-router.post('/stripe-intent', optionalAuthenticate, createStripePaymentIntent);
+router.use(authenticate);
 
-// Payment processing (Cashier & Customer online checkout)
-router.post('/process', optionalAuthenticate, processPayment);
+// Demo Stripe payment intent (accepts any amount — no real money is charged)
+router.post('/stripe-intent', createStripePaymentIntent);
+
+// Cashier billing (POS and collecting pay-at-counter orders)
+router.post('/process', requireRole(['admin', 'manager', 'cashier']), processPayment);
 
 // Transaction logs & receipts
-router.get('/', authenticate, requireRole(['admin', 'manager', 'cashier']), getAllPayments);
-router.get('/receipt/:orderId', optionalAuthenticate, getReceiptByOrder);
+router.get('/', requireRole(['admin', 'manager', 'cashier']), getAllPayments);
+router.get('/receipt/:orderId', getReceiptByOrder);
 
 export default router;
