@@ -33,8 +33,8 @@ export const authenticate = async (
       return;
     }
 
-    if (user.status === 'suspended') {
-      res.status(403).json({ success: false, message: 'Your account has been suspended. Please contact the administrator.' });
+    if (user.status === 'suspended' || user.status === 'inactive') {
+      res.status(403).json({ success: false, message: `Your account is ${user.status}. Please contact the administrator.` });
       return;
     }
 
@@ -71,7 +71,7 @@ export const optionalAuthenticate = async (
     if (token) {
       const decoded = jwt.verify(token, ENV.JWT_SECRET) as IUserPayload;
       const user = await User.findById(decoded.userId);
-      if (user && user.status !== 'suspended') {
+      if (user && user.status !== 'suspended' && user.status !== 'inactive') {
         req.user = {
           userId: user._id.toString(),
           email: user.email,
