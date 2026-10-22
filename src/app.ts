@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import routes from './routes/index.js';
 import { errorHandler } from './middleware/error.middleware.js';
-import { ENV } from './config/env.js';
+import { ENV, isAllowedOrigin } from './config/env.js';
 
 export const createApp = (): Application => {
   const app: Application = express();
@@ -18,34 +18,19 @@ export const createApp = (): Application => {
     })
   );
 
-  // CORS configuration
-  const allowedOrigins = [
-    ENV.CLIENT_URL,
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
-  ];
-
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        if (
-          allowedOrigins.includes(origin) ||
-          origin.startsWith('http://localhost:') ||
-          origin.startsWith('http://127.0.0.1:')
-        ) {
-          return callback(null, true);
-        }
-        return callback(null, true);
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    })
-  );
-  app.options('*', cors());
+  // CORS configuration — only the configured front-end origins (and localhost during development)
+  const corsOptions: cors.CorsOptions = {
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      console.warn(`[CORS] Blocked request from ${origin}. Add it to CLIENT_URL / CLIENT_URLS in .env.`);
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  };
+  app.use(cors(corsOptions));
+  app.options('*', cors(corsOptions));
 
   // Request logging
   if (ENV.NODE_ENV !== 'test') {
