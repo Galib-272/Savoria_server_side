@@ -2,15 +2,22 @@ import { Router } from 'express';
 import {
   createReservation,
   getReservations,
+  getAvailability,
   updateReservationStatus,
+  cancelOwnReservation,
 } from '../controllers/reservation.controller.js';
-import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
+import { authenticate } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/rbac.middleware.js';
 
 const router = Router();
 
-router.post('/', optionalAuthenticate, createReservation);
-router.get('/', optionalAuthenticate, getReservations);
-router.put('/:id/status', authenticate, requireRole(['admin', 'manager', 'waiter']), updateReservationStatus);
+// Public: booked seats for a date/time (no personal details)
+router.get('/availability', getAvailability);
+
+router.use(authenticate);
+router.post('/', requireRole(['customer', 'waiter', 'admin', 'manager']), createReservation);
+router.get('/', requireRole(['customer', 'waiter', 'admin', 'manager', 'cashier']), getReservations);
+router.put('/:id/status', requireRole(['admin', 'manager', 'waiter']), updateReservationStatus);
+router.put('/:id/cancel', requireRole(['customer']), cancelOwnReservation);
 
 export default router;
