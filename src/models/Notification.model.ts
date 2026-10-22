@@ -12,6 +12,10 @@ export interface INotification extends Document {
   orderId?: string;
   tableNumber?: number;
   reservationId?: string;
+  /** user ids that have read this notification (read state is per user) */
+  readBy: string[];
+  /** user ids that have cleared/dismissed this notification */
+  clearedBy: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,8 +37,13 @@ const NotificationSchema = new Schema<INotification>(
     orderId: { type: String },
     tableNumber: { type: Number },
     reservationId: { type: String },
+    readBy: { type: [String], default: [] },
+    clearedBy: { type: [String], default: [] },
   },
   { timestamps: true }
 );
+
+NotificationSchema.index({ targetRoles: 1, createdAt: -1 });
+NotificationSchema.index({ recipientId: 1, createdAt: -1 });
 
 export const Notification = mongoose.model<INotification>('Notification', NotificationSchema);
