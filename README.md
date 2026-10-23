@@ -1,361 +1,252 @@
-# Savoria — Restaurant Management System (RMS) Backend API
+<div align="center">
 
-Production-ready Node.js, Express.js, TypeScript, MongoDB, and Socket.IO REST API backend for the Restaurant Management System.
+# 🍽️ Savoria API Server
 
----
+### *Real-time backend engine for the Savoria Restaurant Management System*
 
-## 📋 Table of Contents
-1. [Overview & Role Workflows](#overview--role-workflows)
-2. [Folder Structure](#folder-structure)
-3. [Quick Start](#quick-start)
-4. [How to Connect MongoDB](#how-to-connect-mongodb)
-5. [How to Configure Google Console for "Continue with Google"](#how-to-configure-google-console-for-continue-with-google)
-6. [How to Configure Stripe Payments](#how-to-configure-stripe-payments)
-7. [Database Seeding & Demo Accounts](#database-seeding--demo-accounts)
-8. [API Endpoints Reference](#api-endpoints-reference)
-9. [Socket.IO Real-Time Events](#socketio-real-time-events)
+[![Live API](https://img.shields.io/badge/🚀_Live_API-Health_Check-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://savoria-server-side.onrender.com/api/health)
+[![Live Site](https://img.shields.io/badge/🌐_Live_Site-Visit_Savoria-E0442A?style=for-the-badge&logo=vercel&logoColor=white)](https://savoria-client-side.vercel.app)
+[![Frontend Repo](https://img.shields.io/badge/💻_Frontend_Repo-View_on_GitHub-181717?style=for-the-badge&logo=github)](https://github.com/Galib-272/Savoria_client_side)
 
----
-
-## 🍽️ Overview & Role Workflows
-
-- **Main Admin / Owner (Protected Account):** Full system control. Fixed email/password (`admin@savoria.com`), protected from deletion, role modification, or suspension. Prohibits creation of secondary admins.
-- **Manager:** Supervises daily restaurant operations, table occupancy, kitchen queue, staff performance, and inventory alerts without administrative root destruction privileges.
-- **Cashier (POS & Billing):** Takes orders, processes customer checkout bills, handles Stripe & split payments, issues receipts (`REC-XXXX`), and immediately triggers real-time order alerts to the kitchen.
-- **Cook / Kitchen:** Real-time queue featuring 3 stages: `New` ➔ `Preparing` ➔ `Ready`. When marked ready, routes notifications to Waiters (for Dine-In) or Delivery panel (for Delivery). Displays locked claims when staff claim food.
-- **Waiter:** Manages restaurant tables (25 tables: `T1`–`T25`, each with 4 seats `S1`–`S4`). Claims ready dine-in food (`assigned to waiter {name}`), locking out duplicate claims by other waiters.
-- **Delivery Staff:** Claims ready delivery orders (`picked up by {name}`). Manages stages: `Picked Up` ➔ `Out for Delivery` ➔ `Delivered`.
-- **Customer:** Browses menu, customizes cart with modifiers, places Dine-In / Takeaway / Delivery orders, pays with Stripe or Cashier, tracks live order timelines, books tables and seats without conflicts.
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+![Express.js](https://img.shields.io/badge/Express.js-000000?style=flat-square&logo=express&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat-square&logo=mongodb&logoColor=white)
+![Socket.IO](https://img.shields.io/badge/Socket.IO-010101?style=flat-square&logo=socketdotio&logoColor=white)
+![JWT](https://img.shields.io/badge/JWT-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
+![Stripe](https://img.shields.io/badge/Stripe-635BFF?style=flat-square&logo=stripe&logoColor=white)
 
 ---
 
-## 📂 Folder Structure
+### ⚙️ REST API + live event hub for seven role-based panels
 
-```text
-rms_server_side/
-├── src/
-│   ├── config/
-│   │   ├── db.ts               # MongoDB Mongoose connection
-│   │   ├── env.ts              # Environment variables
-│   │   ├── google.ts           # Google OAuth verification
-│   │   └── stripe.ts           # Stripe client setup
-│   ├── controllers/
-│   │   ├── auth.controller.ts        # Register, login, google login, me
-│   │   ├── user.controller.ts        # Staff management, 10 waiters constraint, Admin protection
-│   │   ├── table.controller.ts       # 25 tables (T1-T25), 4 seats (S1-S4)
-│   │   ├── menu.controller.ts        # Categories, items, modifiers, recipes
-│   │   ├── order.controller.ts       # Order lifecycle, cook/waiter/delivery claiming
-│   │   ├── payment.controller.ts     # Cashier billing, Stripe intents, split payments, receipts
-│   │   ├── reservation.controller.ts # Seat reservation with overlap prevention
-│   │   ├── inventory.controller.ts   # Ingredients, stock levels, low-stock alerts
-│   │   ├── supplier.controller.ts    # Suppliers & purchases (auto stock increase)
-│   │   ├── expense.controller.ts     # Operational expenses
-│   │   ├── coupon.controller.ts      # Discount coupons & checkout validation
-│   │   ├── review.controller.ts      # Customer ratings & reviews
-│   │   ├── notification.controller.ts# Centralized real-time notifications
-│   │   ├── report.controller.ts      # Dashboard KPIs, weekly trends, sales charts
-│   │   ├── audit.controller.ts       # System audit logs
-│   │   └── setting.controller.ts     # Restaurant settings & branding
-│   ├── middleware/
-│   │   ├── auth.middleware.ts        # JWT token verification
-│   │   ├── rbac.middleware.ts        # RBAC and Main Admin protection
-│   │   ├── error.middleware.ts       # Centralized error handler
-│   │   └── validate.middleware.ts    # Zod schema validation
-│   ├── models/                       # 14 Mongoose Schema models
-│   ├── routes/                       # Express router modules
-│   ├── scripts/
-│   │   └── seed.ts                   # Comprehensive database seed script
-│   ├── sockets/
-│   │   └── socketHandler.ts          # Socket.IO real-time event router
-│   ├── types/                        # Core TypeScript types
-│   ├── app.ts                        # Express application configuration
-│   └── server.ts                     # HTTP + Socket.IO server startup
-├── .env.example
-├── .env
-├── package.json
-└── tsconfig.json
-```
+> *Orders · Kitchen flow · Tables & seats · Reservations · Payments · Inventory · Analytics · Notifications*
+
+</div>
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Architecture Highlights
+
+| Feature | Description |
+|---------|-------------|
+| 🔐 **JWT + role guards** | Every private route checks the token and the user's role (`admin`, `manager`, `cashier`, `kitchen`, `waiter`, `delivery`, `customer`). Public sign-ups are always created as customers — staff accounts can't be self-registered. |
+| 📡 **Server-assigned Socket.IO rooms** | Sockets are authenticated on connect and placed in `role:<role>` and `user:<id>` rooms by the server (clients can't pick rooms). Each event is emitted **once** to the union of rooms, so no panel gets duplicates or another panel's notifications. |
+| 🔔 **One notification service** | A single `notify()` stores one document per audience with per-user read/clear state, and pushes it live — including to the person who made the change, flagged `self` so their bell updates instantly without a second popup. |
+| 💰 **Server-side pricing** | Order totals are recalculated from the database (menu prices, add-ons, coupons, tax and delivery fee from Settings). The client's numbers are never trusted. |
+| 🔄 **Validated order lifecycle** | `new → preparing → ready → served / completed / delivered`, with per-role transition rules, atomic order / receipt / purchase numbers, and stock deducted exactly once. |
+| 📅 **Clash-free reservations** | 2-hour overlap window per seat, a public availability endpoint, and today-only seat syncing in the restaurant's time zone (`Asia/Dhaka`). |
+| 💳 **Demo payment pipeline** | Card, cash, mobile banking and bank transfer. The Stripe screen is a simulation that accepts any amount, records a payment and receipt, and never charges real money. |
+| 🍔 **Self-healing menu catalog** | On startup the server adds any missing categories and dishes from the built-in catalog (14 categories, 96 dishes) and repairs known broken photo links — without ever deleting or overwriting your own edits. |
+| 🛡️ **Hardened Express app** | Helmet, strict CORS allow-list in production, request logging, and consistent JSON errors. |
+
+---
+
+## 🆕 Latest Updates (October 2026)
+
+### 🔔 Instant notifications for your own actions
+- The person who changes something (e.g. an admin cancelling an order) now gets the notification in their bell immediately — previously it only appeared after a refresh.
+- New helper `emitToActorInRooms()` only delivers to the actor's tabs that belong to the event's audience.
+
+### 🍔 Menu catalog & category photos
+- New categories: **Biryani, Kebab & Grill, Soups & Salads, Coffee & Tea, Juices & Shakes** — 96 dishes in total, each with a verified photo.
+- `MenuCategory` now has an `image` field; `GET /api/menu/categories` returns it.
+- `ensureMenuCatalog()` runs once per catalog version at startup; `npm run seed:menu` does the same on demand. Neither deletes anything.
+- Broken photo links (Chicken, Fresh Lime Mojito) are swapped automatically on startup.
+
+### 🌐 Sign-in "failed to connect" fix
+- CORS no longer returns a 500 for unknown origins. In development every origin is allowed (localhost, 127.0.0.1, LAN IP); in production only `CLIENT_URL` and `CLIENT_URLS`.
+
+### 🔒 Access control & data safety
+- Registration always creates customers; staff can't use Google sign-in.
+- Forgot-password flow, manager limits on staff management, ownership checks on orders and reservations.
+- Coupons validated and counted on the server; totals computed from the database.
+
+---
+
+## 🏗️ Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Runtime** | Node.js (LTS) |
+| **Framework** | Express.js 4 (TypeScript, ES modules) |
+| **Database** | MongoDB Atlas + Mongoose 8 |
+| **Real-time** | Socket.IO 4 |
+| **Auth** | JSON Web Tokens + bcrypt, Google Identity (google-auth-library) |
+| **Payments** | Stripe SDK (demo / simulation mode) |
+| **Security** | Helmet, CORS allow-list, role middleware |
+| **Deployment** | Render (always-on web service) |
+
+---
+
+## 📋 API Reference
+
+All routes are prefixed with `/api`. 🔒 = JWT required.
+
+### 🔓 Public
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/auth/register` | Create a customer account |
+| `POST` | `/auth/login` | Email + password login |
+| `POST` | `/auth/google` | Continue with Google (customers only) |
+| `POST` | `/auth/forgot-password` | Password reset request |
+| `GET` | `/menu/categories` | All categories (with photo) |
+| `GET` | `/menu/items` | Dishes — filter by `categoryId`, `search`, `featured`, `popular`, `available` |
+| `GET` | `/menu/items/:id` | Dish details |
+| `GET` | `/tables` · `/tables/:id` | Floor map (public view) |
+| `GET` | `/reservations/availability` | Free seats for a date & time |
+| `GET` | `/reviews` | Approved reviews |
+| `GET` | `/settings` | Restaurant info, tax, delivery fee |
+| `POST` | `/coupons/validate` · `GET /coupons` | Check a coupon / list offers |
+| `POST` | `/contact` | Contact form |
+
+### 👤 Account 🔒
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/auth/me` | Current user |
+| `PUT` | `/auth/profile` | Update profile & avatar |
+| `GET` | `/notifications` | Your notifications |
+| `PATCH` | `/notifications/:id/read` · `/notifications/read-all` | Mark read |
+| `DELETE` | `/notifications/clear-all` | Clear your list |
+
+### 🧾 Orders 🔒
+
+| Method | Endpoint | Roles |
+|--------|----------|-------|
+| `POST` | `/orders` | customer, cashier, waiter, admin, manager |
+| `GET` | `/orders` · `/orders/:id` | everyone (customers see only their own) |
+| `PUT` | `/orders/:id/start-preparing` · `/mark-ready` | kitchen, admin, manager |
+| `PUT` | `/orders/:id/waiter-claim` | waiter, admin, manager |
+| `PUT` | `/orders/:id/delivery-pickup` · `/delivery-out` · `/delivery-delivered` | delivery, admin, manager |
+| `PUT` | `/orders/:id/status` | served / completed / cancelled — rules checked per role |
+
+### 💳 Payments 🔒
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/payments/stripe-intent` | Demo card payment intent |
+| `POST` | `/payments/process` | Record a payment (cashier, admin, manager) |
+| `GET` | `/payments` | Transaction history |
+| `GET` | `/payments/receipt/:orderId` | Receipt |
+
+### 📅 Tables & Reservations 🔒
+
+| Method | Endpoint | Roles |
+|--------|----------|-------|
+| `PUT` | `/tables/:id/status` · `/tables/:id/seats/:seatNumber` | waiter, cashier, admin, manager |
+| `PUT` | `/tables/:id/assign-waiter` | waiter, admin, manager |
+| `POST` | `/reservations` | customer, waiter, admin, manager |
+| `GET` | `/reservations` | customer (own), staff |
+| `PUT` | `/reservations/:id/status` | waiter, admin, manager |
+| `PUT` | `/reservations/:id/cancel` | customer (own) |
+| `POST` | `/reviews` | customer |
+
+### 🛠️ Management 🔒
+
+| Method | Endpoint | Roles |
+|--------|----------|-------|
+| `POST/PUT/DELETE` | `/menu/categories(/:id)` · `/menu/items(/:id)` | admin, manager (delete: admin) |
+| `PATCH` | `/menu/items/:id/availability` | admin, manager |
+| `GET/POST/PUT/DELETE` | `/inventory` · `PATCH /inventory/:id/adjust` | admin, manager, kitchen (adjust) |
+| `GET/POST/PUT/DELETE` | `/suppliers` · `/suppliers/purchases` | admin, manager |
+| `GET/POST/DELETE` | `/expenses` | admin, manager |
+| `POST/DELETE` | `/coupons` | admin, manager |
+| `GET/POST/PUT/DELETE` | `/users/staff` | admin (managers: view & limited edits) |
+| `GET` | `/reports/dashboard-stats` · `/reports/charts` | admin, manager |
+| `GET` | `/audit-logs` | admin, manager |
+| `PUT` | `/settings` | admin |
+
+---
+
+## 📡 Socket.IO Events
+
+Connect with `auth: { token }`. The server places each socket in its rooms automatically.
+
+| Event | Sent to | Purpose |
+|-------|---------|---------|
+| `notification` | the event's audience (+ the actor, with `self: true`) | Bell & popup |
+| `notification:read_one` · `read_all` · `cleared_all` | your own tabs | Keep tabs in sync |
+| `order:updated` | staff, the order's customer, tracking room | Order status changes |
+| `kitchen:new_order` | kitchen, admin, manager | New ticket on the cooking board |
+| `waiter:order_ready` · `delivery:order_ready` | waiters · riders | Food ready to pick up |
+| `order:waiter_claimed` · `order:delivery_claimed` | staff | Someone took the order |
+| `table:updated` | everyone (guests get a privacy-safe version) | Floor map & seats |
+| `reservation:new_request` · `reservation:status_update` | waiters & management · the customer | Bookings |
+| `payment:created` | cashier, admin, manager | New payment |
+| `inventory:low_stock` | admin, manager, kitchen | Stock alert |
+
+---
+
+## 🚀 Run It Locally
 
 ```bash
-# 1. Navigate to backend directory
-cd rms_server_side
-
-# 2. Install dependencies
+git clone https://github.com/Galib-272/Savoria_server_side.git
+cd Savoria_server_side
 npm install
-
-# 3. Configure environment variables (.env)
-cp .env.example .env
-
-# 4. Seed database with demo accounts, 25 tables, 10 waiters, menu & inventory
-npm run seed
-
-# 5. Start development server (Port 5001)
-npm run dev
+cp .env.example .env     # then fill in the values
+npm run dev              # http://localhost:5001
 ```
 
----
+| Variable | Description |
+|----------|-------------|
+| `PORT` | Local port (default `5001`; Render sets its own) |
+| `NODE_ENV` | `development` locally, `production` when deployed |
+| `MONGODB_URI` | MongoDB Atlas connection string |
+| `JWT_SECRET` · `JWT_EXPIRES_IN` | Token signing secret and lifetime (e.g. `7d`) |
+| `CLIENT_URL` · `CLIENT_URLS` | Allowed front-end address(es) in production (comma-separated) |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID for "Continue with Google" |
+| `RESTAURANT_TIMEZONE` | Time zone for "today", reservations and reports (`Asia/Dhaka`) |
+| `MAIN_ADMIN_*` · `MANAGER_*` | Fixed admin & manager accounts |
+| `STRIPE_SECRET_KEY` | Optional — the demo checkout works without it |
 
-## 🍃 How to Connect MongoDB
-
-### Option A: Local MongoDB (Default)
-If you have MongoDB installed locally or running via Docker:
-1. Ensure the MongoDB service is running:
-   ```bash
-   # On macOS via brew
-   brew services start mongodb-community
-   ```
-2. Your `.env` will use the default URI:
-   ```env
-   MONGODB_URI=mongodb://127.0.0.1:27017/rms_db
-   ```
-
----
-
-### Option B: MongoDB Atlas (Free Cloud Database)
-1. **Create an Account:** Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) and sign in.
-2. **Create a Cluster:**
-   - Click **"Create Deployment"** or **"Build a Database"**.
-   - Choose the free **M0 (Shared)** tier.
-   - Select your preferred cloud provider (AWS/Google Cloud) and closest region (e.g., Singapore/Mumbai).
-   - Click **Create**.
-3. **Create Database User:**
-   - Under **Security** ➔ **Database Access**, click **Add New Database User**.
-   - Choose **Password** Authentication.
-   - Enter a username (e.g., `rms_admin`) and a secure password (e.g., `Savoria123456`).
-   - Role: **Built-in Role ➔ Read and write to any database**.
-   - Click **Add User**.
-4. **Configure Network Access (IP Whitelist):**
-   - Under **Security** ➔ **Network Access**, click **Add IP Address**.
-   - Click **"Allow Access from Anywhere"** (`0.0.0.0/0`) or add your current IP address.
-   - Click **Confirm**.
-5. **Get the Connection String:**
-   - Under **Database** ➔ **Clusters**, click **Connect**.
-   - Select **Drivers** (Node.js).
-   - Copy the connection URI:
-     ```text
-     mongodb+srv://<username>:<password>@cluster0.abcde.mongodb.net/?retryWrites=true&w=majority
-     ```
-6. **Update `.env`:**
-   Replace `<username>` and `<password>` with your database user credentials and specify the database name (`rms_db`):
-   ```env
-   MONGODB_URI=mongodb+srv://rms_admin:Savoria123456@cluster0.abcde.mongodb.net/rms_db?retryWrites=true&w=majority
-   ```
+| Script | What it does |
+|--------|--------------|
+| `npm run dev` | Start with auto-reload (nodemon + tsx) |
+| `npm run build` · `npm start` | Compile TypeScript to `dist/` and run it |
+| `npm run seed:menu` | Add any missing categories & dishes — **never deletes** |
+| `npm run seed` | ⚠️ Rebuild the demo database from scratch — **wipes all data** |
 
 ---
 
-## 🔐 How to Configure Google Console for "Continue with Google"
+## ☁️ Deployment
 
-To enable **"Continue with Google"** on the customer website:
+Deployed on **Render** as an always-on web service — Socket.IO needs a long-running server, which serverless platforms can't keep open.
 
-1. **Go to Google Cloud Console:**
-   - Open [Google Cloud Console](https://console.cloud.google.com/).
-2. **Create a New Project:**
-   - Click on the project dropdown at the top ➔ **New Project**.
-   - Project Name: `Savoria RMS` ➔ Click **Create**.
-3. **Configure OAuth Consent Screen:**
-   - In the left sidebar, navigate to **APIs & Services ➔ OAuth consent screen**.
-   - Select **External** ➔ Click **Create**.
-   - Fill in the required fields:
-     - **App name:** `Savoria Restaurant`
-     - **User support email:** (Your email)
-     - **Developer contact information:** (Your email)
-   - Click **Save and Continue**.
-   - On the **Scopes** page: Click **Add or Remove Scopes**, select:
-     - `.../auth/userinfo.email`
-     - `.../auth/userinfo.profile`
-     - `openid`
-   - Click **Save and Continue**.
-   - Under **Test users**, add your Google email address for testing ➔ Click **Save and Continue**.
-4. **Create OAuth 2.0 Client ID Credentials:**
-   - In the left sidebar, navigate to **APIs & Services ➔ Credentials**.
-   - Click **+ Create Credentials ➔ OAuth client ID**.
-   - Application type: **Web application**.
-   - Name: `RMS Client Web`.
-   - **Authorized JavaScript origins:**
-     - Add `http://localhost:3000` (for Next.js client development)
-     - Add your production domain when deployed
-   - **Authorized redirect URIs:**
-     - Add `http://localhost:3000`
-     - Add `http://localhost:3000/api/auth/callback/google`
-   - Click **Create**.
-5. **Copy Your Credentials:**
-   - Google will display:
-     - **Client ID** (e.g. `123456789-abcdef.apps.googleusercontent.com`)
-     - **Client Secret** (e.g. `GOCSPX-xxxxxxxxx`)
-6. **Add to `.env`:**
-   ```env
-   GOOGLE_CLIENT_ID=your_client_id_here.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=your_client_secret_here
-   ```
-7. **Frontend Integration:**
-   The frontend Google Sign-In button receives the Google ID Token / credential and calls:
-   ```http
-   POST /api/auth/google
-   Content-Type: application/json
+| Setting | Value |
+|---------|-------|
+| Build command | `npm install --include=dev && npm run build` |
+| Start command | `npm start` |
+| Health check | `/api/health` |
 
-   {
-     "credential": "eyJhbGciOiJSUzI1NiIs..."
-   }
-   ```
-   The backend verifies the token directly with Google's public keys via `google-auth-library` and returns a JWT token.
+The free plan sleeps after 15 minutes without traffic, so the first request afterwards can take up to a minute. Every push to `main` redeploys automatically.
 
 ---
 
-## 💳 How to Configure Stripe Payments
+## 📂 Source Code Control
 
-1. Sign in to your [Stripe Dashboard](https://dashboard.stripe.com/).
-2. Toggle to **Test Mode** (at the top right).
-3. Navigate to **Developers ➔ API Keys**.
-4. Copy your **Publishable key** (`pk_test_...`) and **Secret key** (`sk_test_...`).
-5. Update `rms_server_side/.env`:
-   ```env
-   STRIPE_SECRET_KEY=sk_test_your_secret_key_here
-   STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
-   ```
-> *Note: If `STRIPE_SECRET_KEY` is not provided, the backend automatically provides simulated mock client secrets during local testing so checkout flows never crash!*
+| Metric | Status |
+|--------|--------|
+| **Commits** | ✅ 70+ backend commits — API routes, role guards, Socket.IO rooms, order & payment flow, reservations, menu catalog |
+| **Reliability** | ✅ 118 automated API checks passing — orders, payments, reservations, roles and notifications per panel |
 
 ---
 
-## 👥 Database Seeding & Demo Accounts
+## 📄 License
 
-Run `npm run seed` in `rms_server_side` to initialize all demo accounts:
+Copyright © 2026 **Savoria API**.
+Developed by *Syed Ahmad Galib*
 
-| Role | Email | Password | Assigned Area |
-| :--- | :--- | :--- | :--- |
-| **Main Admin** 👑 | `admin@savoria.com` | `Admin@123456` | Protected / Full System Access |
-| **Manager** 👔 | `manager@savoria.com` | `Manager@123456` | Operations, Reports, Stock Supervision |
-| **Cashier** 💵 | `cashier@savoria.com` | `Cashier@123456` | POS Billing, Stripe, Receipts |
-| **Kitchen / Cook** 👨‍🍳 | `kitchen@savoria.com` | `Kitchen@123456` | Kitchen Display, Preparation, Ready Routing |
-| **Waiters (10 Accounts)** 🍽️ | `rahim@savoria.com`<br>`karim@savoria.com`<br>`tarek@savoria.com`<br>`john@savoria.com` *(and 6 more)* | `Waiter@123456` | Tables T1–T25, Seats S1–S4, Dine-In Claiming |
-| **Delivery Staff** 🛵 | `delivery@savoria.com` | `Delivery@123456` | Delivery Orders, Pickup, Out for Delivery |
-| **Customer** 👤 | `customer@savoria.com` | `Customer@123456` | Website, Ordering, Table Reservation |
-
-### Tables & Seats Setup:
-- **25 Tables:** `T1` through `T25`
-- **4 Seats Per Table:** `S1`, `S2`, `S3`, `S4`
-- **Sections:** Window, Patio, VIP, Main
-- **States:** Available, Occupied, Reserved, Cleaning, Out of Service
+All schemas and architecture remain under educational distribution guidelines.
 
 ---
 
-## 🌐 API Endpoints Reference
+<div align="center">
 
-### 1. Authentication (`/api/auth`)
-- `POST /api/auth/register` — Register a customer account
-- `POST /api/auth/login` — Login with email and password
-- `POST /api/auth/google` — Google OAuth credential login
-- `GET /api/auth/me` — Get current logged-in profile (Bearer token)
+**⚡ Built with Node.js, Express, MongoDB & Socket.IO — real-time by design.**
 
-### 2. Staff & Users (`/api/users`)
-- `GET /api/users/staff` — List all staff members
-- `POST /api/users/staff` — Create staff member (Main Admin only; enforces max 10 waiters & blocks duplicate Admin)
-- `PUT /api/users/staff/:id` — Update staff (Protected Admin rules apply)
-- `DELETE /api/users/staff/:id` — Remove staff member (Main Admin cannot be deleted)
+⭐ *Star this repo if you like the backend!*
 
-### 3. Tables & Seats (`/api/tables`)
-- `GET /api/tables` — Get all 25 tables with their 4 seats
-- `GET /api/tables/:id` — Get single table details
-- `PUT /api/tables/:id/status` — Update table status (`available`, `occupied`, `reserved`, `cleaning`)
-- `PUT /api/tables/:id/seats/:seatNumber` — Update specific seat (`S1`, `S2`, `S3`, `S4`)
-- `PUT /api/tables/:id/assign-waiter` — Assign a waiter to a table
-
-### 4. Menu & Categories (`/api/menu`)
-- `GET /api/menu/categories` — Get all menu categories
-- `POST /api/menu/categories` — Create category
-- `PUT /api/menu/categories/:id` — Update category
-- `DELETE /api/menu/categories/:id` — Delete category
-- `GET /api/menu/items` — Get all items (filters: `search`, `categoryId`, `featured`, `popular`, `available`)
-- `GET /api/menu/items/:id` — Get item details (recipes, modifiers, allergens)
-- `POST /api/menu/items` — Create menu item
-- `PUT /api/menu/items/:id` — Update menu item
-- `PATCH /api/menu/items/:id/availability` — Toggle item availability
-- `DELETE /api/menu/items/:id` — Delete menu item
-
-### 5. Orders (`/api/orders`)
-- `POST /api/orders` — Create new order (Dine-In, Takeaway, Delivery)
-- `GET /api/orders` — List orders (filters: `status`, `orderType`, `paymentStatus`, `search`, `page`)
-- `GET /api/orders/:id` — Get order by ID or order number
-- `PUT /api/orders/:id/start-preparing` — Cook starts preparing (status ➔ `preparing`)
-- `PUT /api/orders/:id/mark-ready` — Cook marks ready (routes alert to Waiter or Delivery)
-- `PUT /api/orders/:id/waiter-claim` — Waiter claims food (sets `assigned to waiter {name}` & locks out others)
-- `PUT /api/orders/:id/delivery-pickup` — Delivery claims food (sets `picked up by {name}`)
-- `PUT /api/orders/:id/delivery-out` — Delivery marks `out_for_delivery`
-- `PUT /api/orders/:id/delivery-delivered` — Delivery marks `delivered` (triggers auto recipe stock deduction)
-- `PUT /api/orders/:id/status` — Generic status update
-
-### 6. Payments & Billing (`/api/payments`)
-- `POST /api/payments/stripe-intent` — Create Stripe PaymentIntent
-- `POST /api/payments/process` — Cashier processes bill (cash, card, split payment, bKash) ➔ sends order to kitchen
-- `GET /api/payments` — Payment records & transaction logs
-- `GET /api/payments/receipt/:orderId` — Generate professional receipt (`REC-XXXX`)
-
-### 7. Reservations (`/api/reservations`)
-- `POST /api/reservations` — Book table & seats (enforces seat overlap conflict prevention!)
-- `GET /api/reservations` — List reservations
-- `PUT /api/reservations/:id/status` — Update reservation status
-
-### 8. Inventory & Stock (`/api/inventory`)
-- `GET /api/inventory` — List inventory items & status (`in_stock`, `low_stock`, `out_of_stock`)
-- `POST /api/inventory` — Add ingredient
-- `PUT /api/inventory/:id` — Update ingredient
-- `PATCH /api/inventory/:id/adjust` — Adjust stock manually with audit log
-- `DELETE /api/inventory/:id` — Delete ingredient
-
-### 9. Suppliers & Purchases (`/api/suppliers`)
-- `GET /api/suppliers` — List suppliers
-- `POST /api/suppliers` — Create supplier
-- `GET /api/suppliers/purchases` — List purchase orders
-- `POST /api/suppliers/purchases` — Record purchase order (automatically updates ingredient stock)
-
-### 10. Expenses (`/api/expenses`)
-- `GET /api/expenses` — View expenses (Rent, Electricity, Gas, Salary, Marketing, etc.)
-- `POST /api/expenses` — Record expense
-- `DELETE /api/expenses/:id` — Delete expense
-
-### 11. Coupons (`/api/coupons`)
-- `GET /api/coupons` — List active coupons
-- `POST /api/coupons/validate` — Validate coupon against cart total & check expiration/usage
-- `POST /api/coupons` — Create coupon
-- `DELETE /api/coupons/:id` — Delete coupon
-
-### 12. Reviews & Notifications (`/api/reviews`, `/api/notifications`)
-- `GET /api/reviews` — Get customer reviews
-- `POST /api/reviews` — Submit review
-- `GET /api/notifications` — Get role-based real-time notifications
-- `PATCH /api/notifications/:id/read` — Mark notification read
-- `PATCH /api/notifications/read-all` — Mark all notifications read
-
-### 13. Reports & Analytics (`/api/reports`)
-- `GET /api/reports/dashboard-stats` — Live KPI counters (Revenue, Profit, Occupancy, Orders)
-- `GET /api/reports/charts` — Weekly sales, category breakdown, popular items, order type distribution
-
-### 14. Audit Logs (`/api/audit-logs`)
-- `GET /api/audit-logs` — Complete chronological audit trail of all staff and system actions
-
-### 15. Settings (`/api/settings`)
-- `GET /api/settings` — Get restaurant settings (Currency: BDT ৳, tax rate, opening hours, branding)
-- `PUT /api/settings` — Update restaurant settings (Admin only)
-
----
-
-## 📡 Socket.IO Real-Time Events
-
-Connect your client Socket.IO instance to `http://localhost:5001`.
-
-| Event | Direction | Payload | Description |
-| :--- | :--- | :--- | :--- |
-| `join_role_room` | Client ➔ Server | `string` (`kitchen`, `waiter`, `delivery`, `cashier`, `manager`, `admin`) | Joins role-specific room |
-| `join_order_room` | Client ➔ Server | `orderId` | Customer joins specific order room for live tracking |
-| `order:updated` | Server ➔ Client | `Order` object | Broadcasts order status changes across panels |
-| `order:customer_update` | Server ➔ Client | `Order` object | Sent to customer tracking timeline |
-| `kitchen:new_order` | Server ➔ Client | `Order` object | Triggered when cashier takes payment |
-| `waiter:order_ready` | Server ➔ Client | `{ orderId, orderNumber, tableNumber, message }` | Cook routes ready dine-in food to waiters |
-| `delivery:order_ready` | Server ➔ Client | `{ orderId, orderNumber, address, message }` | Cook routes ready delivery food to delivery panel |
-| `order:waiter_claimed` | Server ➔ Client | `{ orderId, waiterName, message }` | Waiter claims food, displays on cook board & locks others |
-| `order:delivery_claimed` | Server ➔ Client | `{ orderId, deliveryName, message }` | Delivery rider picks up food, displays on cook board |
-| `table:updated` | Server ➔ Client | `Table` object | Table or seat state change broadcast |
-| `inventory:low_stock` | Server ➔ Client | `InventoryItem` | Low stock alert sent to managers and admin |
+</div>
