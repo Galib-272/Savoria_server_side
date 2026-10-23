@@ -25,31 +25,6 @@ export const requireRole = (allowedRoles: UserRole[]) => {
   };
 };
 
-export const requirePermission = (permission: string) => {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      res.status(401).json({ success: false, message: 'Unauthorized. Please sign in.' });
-      return;
-    }
-
-    // Main Admin has all permissions
-    if (req.user.isMainAdmin || req.user.role === 'admin') {
-      return next();
-    }
-
-    const userPermissions = req.user.permissions || [];
-    if (!userPermissions.includes(permission)) {
-      res.status(403).json({
-        success: false,
-        message: `Forbidden. You lack the required permission: ${permission}`,
-      });
-      return;
-    }
-
-    next();
-  };
-};
-
 // Enforce Main Admin Protection & prevent secondary admin creation
 export const protectAdminRules = async (
   req: AuthenticatedRequest,
