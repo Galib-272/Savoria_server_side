@@ -40,7 +40,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
   { name: 'Pizza', icon: '🍕', order: 2, image: px(2147491) },
   { name: 'Biryani', icon: '🍛', order: 3, image: px(5410401) },
   { name: 'Pasta', icon: '🍝', order: 4, image: px(1279330) },
-  { name: 'Chicken', icon: '🍗', order: 5, image: px(60616) },
+  { name: 'Chicken', icon: '🍗', order: 5, image: px(33254639) },
   { name: 'Kebab & Grill', icon: '🍢', order: 6, image: px(2233729) },
   { name: 'Rice', icon: '🍚', order: 7, image: px(3926133) },
   { name: 'Seafood', icon: '🦐', order: 8, image: px(8697543) },
@@ -308,3 +308,13 @@ export const CATALOG_ITEMS: CatalogItem[] = [
 export const CATEGORY_MOVES: { namePattern: RegExp; to: string }[] = [
   { namePattern: /biryani|biriyani|kacchi/i, to: 'Biryani' },
 ];
+
+/**
+ * Photo links that turned out to be broken → their replacement.
+ * Applied on every server start, only to records that still use the exact broken link
+ * (a photo you changed yourself is never touched).
+ */
+export const IMAGE_FIXES: Record<string, string> = {
+  'https://images.pexels.com/photos/60616/pexels-photo-60616.jpeg?auto=compress&cs=tinysrgb&w=600': px(33254639),
+  'https://plus.unsplash.com/premium_photo-1721025990485-73e7e54d4256?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D': px(4051220),
+};

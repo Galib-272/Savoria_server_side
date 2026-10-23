@@ -2,7 +2,7 @@ import { MenuCategory } from '../models/MenuCategory.model.js';
 import { MenuItem } from '../models/MenuItem.model.js';
 import { Counter } from '../models/Counter.model.js';
 import { escapeRegex } from '../utils/helpers.js';
-import { CATALOG_CATEGORIES, CATALOG_ITEMS, CATALOG_VERSION, CATEGORY_MOVES } from '../scripts/menuCatalog.js';
+import { CATALOG_CATEGORIES, CATALOG_ITEMS, CATALOG_VERSION, CATEGORY_MOVES, IMAGE_FIXES } from '../scripts/menuCatalog.js';
 
 const sameName = (name: string) => ({ $regex: `^${escapeRegex(name.trim())}$`, $options: 'i' });
 
@@ -74,6 +74,7 @@ export const syncMenuCatalog = async (): Promise<MenuSyncResult> => {
     result.itemsAdded += 1;
   }
 
+  await fixBrokenImages();
   await Counter.updateOne({ _id: 'menuCatalogVersion' }, { $set: { seq: CATALOG_VERSION } }, { upsert: true });
   return result;
 };
@@ -82,8 +83,21 @@ export const syncMenuCatalog = async (): Promise<MenuSyncResult> => {
  * Runs once per catalog version when the server starts, so the full menu shows up without
  * anyone running a script. Dishes you delete later are not brought back (it won't run again).
  */
+/** Swap known-broken photo links for working ones (only exact matches, so custom photos are kept). */
+export const fixBrokenImages = async (): Promise<number> => {
+  let fixed = 0;
+  for (const [broken, replacement] of Object.entries(IMAGE_FIXES)) {
+    const a = await MenuCategory.updateMany({ image: broken }, { $set: { image: replacement } });
+    const b = await MenuItem.updateMany({ image: broken }, { $set: { image: replacement } });
+    fixed += (a.modifiedCount ?? 0) + (b.modifiedCount ?? 0);
+  }
+  return fixed;
+};
+
 export const ensureMenuCatalog = async (): Promise<void> => {
   try {
+    const fixed = await fixBrokenImages();
+    if (fixed) console.log(`🖼️  Replaced ${fixed} broken menu photo link(s).`);
     const marker = await Counter.findById('menuCatalogVersion').lean();
     if (marker && marker.seq >= CATALOG_VERSION) {
       // already synced — just give any catalog category that has no photo its default one

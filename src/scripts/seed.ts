@@ -388,7 +388,7 @@ const seedDatabase = async () => {
         name: 'Fresh Lime Mojito',
         description: 'Refreshing blend of fresh lime, mint leaves, simple syrup, and sparkling soda.',
         price: 120,
-        image: 'https://plus.unsplash.com/premium_photo-1721025990485-73e7e54d4256?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D',
+        image: 'https://images.pexels.com/photos/4051220/pexels-photo-4051220.jpeg?auto=compress&cs=tinysrgb&w=600',
         categoryId: catMap.get('Drinks') || '',
         categoryName: 'Drinks',
         available: true,
