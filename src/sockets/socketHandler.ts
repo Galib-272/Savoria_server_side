@@ -89,6 +89,19 @@ export const emitToRooms = (rooms: string[], event: string, payload: unknown, ex
   op.emit(event, payload);
 };
 
+/**
+ * Send an event to the user who caused it, but only to their tabs that belong to one of `rooms`
+ * (e.g. an admin who cancels an order is in role:admin, so their own bell updates instantly,
+ * while a kitchen user marking an order ready doesn't get the waiter's notification).
+ */
+export const emitToActorInRooms = async (actorId: string, rooms: string[], event: string, payload: unknown): Promise<void> => {
+  if (!ioInstance || !actorId || rooms.length === 0) return;
+  const sockets = await ioInstance.in(userRoom(actorId)).fetchSockets();
+  for (const s of sockets) {
+    if (rooms.some((r) => s.rooms.has(r))) s.emit(event, payload);
+  }
+};
+
 const toPlain = (doc: any) => (doc && typeof doc.toObject === 'function' ? doc.toObject() : doc);
 
 /** Rooms that may receive full order details: all staff, the owning customer, and the order's tracking room. */

@@ -1,5 +1,5 @@
 import { Notification, INotification } from '../models/Notification.model.js';
-import { emitToRooms, roleRoom, userRoom } from '../sockets/socketHandler.js';
+import { emitToActorInRooms, emitToRooms, roleRoom, userRoom } from '../sockets/socketHandler.js';
 
 export type NotificationType = INotification['type'];
 
@@ -17,7 +17,7 @@ export interface NotifyInput {
   orderId?: string;
   reservationId?: string;
   tableNumber?: number;
-  /** The user who triggered the event — they don't get a live popup for their own action. */
+  /** The user who triggered the event — their bell updates instantly too, but without a popup (`self: true`). */
   actorId?: string;
   /** Set false to skip the automatic admin/manager copy (rare). */
   includeManagement?: boolean;
@@ -62,7 +62,10 @@ export const notify = async (input: NotifyInput): Promise<void> => {
         tableNumber: input.tableNumber,
         time: 'Just now',
       });
-      emitToRooms(staffRoles.map(roleRoom), 'notification', serializeNotification(staffDoc), exceptRooms);
+      const payload = serializeNotification(staffDoc);
+      emitToRooms(staffRoles.map(roleRoom), 'notification', payload, exceptRooms);
+      // the person who made the change sees it in their bell right away (no refresh needed)
+      if (input.actorId) await emitToActorInRooms(input.actorId, staffRoles.map(roleRoom), 'notification', { ...payload, self: true });
     }
 
     if (input.customerId) {
@@ -78,7 +81,11 @@ export const notify = async (input: NotifyInput): Promise<void> => {
         tableNumber: input.tableNumber,
         time: 'Just now',
       });
-      emitToRooms([userRoom(input.customerId)], 'notification', serializeNotification(customerDoc), exceptRooms);
+      const payload = serializeNotification(customerDoc);
+      emitToRooms([userRoom(input.customerId)], 'notification', payload, exceptRooms);
+      if (input.actorId && input.actorId === input.customerId) {
+        emitToRooms([userRoom(input.customerId)], 'notification', { ...payload, self: true });
+      }
     }
   } catch (err) {
     console.error('[Notification] Failed to create/emit notification:', err);
