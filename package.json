@@ -2,7 +2,7 @@
   "name": "rms-server-side",
   "version": "1.0.0",
   "description": "Production-ready Restaurant Management System (RMS) Node.js & Express REST API with MongoDB & Socket.IO",
-  "main": "server.js",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
     "dev": "nodemon",
@@ -34,8 +34,7 @@
     "mongoose": "^8.8.0",
     "morgan": "^1.10.0",
     "socket.io": "^4.8.1",
-    "stripe": "^17.3.1",
-    "zod": "^3.23.8"
+    "stripe": "^17.3.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
