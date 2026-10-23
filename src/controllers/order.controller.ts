@@ -712,14 +712,14 @@ export const updateOrderStatus = async (req: AuthenticatedRequest, res: Response
         fail(res, 404, 'Order not found');
         return;
       }
-      if (status === 'completed' && order.paymentStatus !== 'paid') {
-        fail(res, 409, `Please pay ৳${order.total} at the counter — the cashier will hand over your order.`);
-        return;
-      }
       const canPickUp = status === 'completed' && order.orderType === 'takeaway' && order.status === 'ready';
       const canCancel = status === 'cancelled' && order.status === 'new';
       if (!canPickUp && !canCancel) {
         fail(res, 403, 'You can only confirm pickup of a ready takeaway order, or cancel an order before the kitchen starts it.');
+        return;
+      }
+      if (canPickUp && order.paymentStatus !== 'paid') {
+        fail(res, 409, `Please pay ৳${order.total} at the counter — the cashier will hand over your order.`);
         return;
       }
     }
